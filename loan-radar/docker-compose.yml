@@ -1,0 +1,17 @@
+name: loan-radar
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: loan-radar-postgres
+    environment:
+      POSTGRES_USER: loan_radar
+      POSTGRES_PASSWORD: loan_radar_password
+      POSTGRES_DB: loan_radar
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
