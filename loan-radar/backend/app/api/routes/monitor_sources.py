@@ -18,6 +18,8 @@ from app.services.monitor_source_service import (
     toggle_monitor_source,
     update_monitor_source,
 )
+from app.services.crawl_pipeline_service import run_monitor_source_crawl
+from app.schemas.crawl_task import CrawlTaskOut
 from app.utils.response import error_response, success_response
 
 router = APIRouter(prefix="/api/monitor-sources", tags=["monitor-sources"])
@@ -129,6 +131,20 @@ def toggle_monitor_source_endpoint(
 
     updated_monitor_source = toggle_monitor_source(db, monitor_source, enabled)
     data = MonitorSourceOut.model_validate(updated_monitor_source).model_dump(mode="json")
+    return success_response(data)
+
+
+@router.post("/{monitor_source_id}/crawl")
+def crawl_monitor_source_endpoint(
+    monitor_source_id: int,
+    db: Session = Depends(get_db),
+):
+    monitor_source = get_monitor_source(db, monitor_source_id)
+    if monitor_source is None:
+        return not_found_response()
+
+    crawl_task = run_monitor_source_crawl(db, monitor_source)
+    data = CrawlTaskOut.model_validate(crawl_task).model_dump(mode="json")
     return success_response(data)
 
 
