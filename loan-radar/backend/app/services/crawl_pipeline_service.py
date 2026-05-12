@@ -209,6 +209,8 @@ def run_monitor_source_crawl(db: Session, source: MonitorSource) -> CrawlTask:
             comment_count=new_comments_count,  # 只计算新增的 comments
             lead_count=lead_count,
             discovered_competitor_count=discovered_competitor_count,
+            collected_posts=len(collector_result.posts),
+            collected_comments=len(collector_result.comments),
         )
     except Exception as error:
         db.rollback()

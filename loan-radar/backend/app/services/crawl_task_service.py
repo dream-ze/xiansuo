@@ -7,14 +7,19 @@ from app.models.monitor_source import MonitorSource
 
 
 def create_running_crawl_task(db: Session, source: MonitorSource) -> CrawlTask:
+    config = source.config or {}
     crawl_task = CrawlTask(
         source_id=source.id,
         source_type=source.source_type,
+        source_value=source.value,
         platform=source.platform,
         status="running",
+        limit_count=int(config.get("max_posts", 20) or 20),
         started_at=datetime.now(timezone.utc),
         post_count=0,
         comment_count=0,
+        collected_posts=0,
+        collected_comments=0,
         lead_count=0,
         discovered_competitor_count=0,
     )
@@ -31,14 +36,19 @@ def mark_crawl_task_success(
     comment_count: int,
     lead_count: int,
     discovered_competitor_count: int = 0,
+    collected_posts: int | None = None,
+    collected_comments: int | None = None,
+    error_message: str | None = None,
 ) -> CrawlTask:
     crawl_task.status = "success"
     crawl_task.finished_at = datetime.now(timezone.utc)
     crawl_task.post_count = post_count
     crawl_task.comment_count = comment_count
+    crawl_task.collected_posts = post_count if collected_posts is None else collected_posts
+    crawl_task.collected_comments = comment_count if collected_comments is None else collected_comments
     crawl_task.lead_count = lead_count
     crawl_task.discovered_competitor_count = discovered_competitor_count
-    crawl_task.error_message = None
+    crawl_task.error_message = error_message
     db.commit()
     db.refresh(crawl_task)
     return crawl_task

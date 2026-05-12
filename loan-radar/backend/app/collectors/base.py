@@ -39,6 +39,29 @@ class CollectorResult(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class ProviderCollectionResult(BaseModel):
+    posts: list[CollectedPost] = Field(default_factory=list)
+    comments: list[CollectedComment] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] | None = None
+
+
+class CollectionProviderError(Exception):
+    pass
+
+
+class CollectionAuthError(CollectionProviderError):
+    pass
+
+
+class CollectionRequestError(CollectionProviderError):
+    pass
+
+
+class CollectionNoDataError(CollectionProviderError):
+    pass
+
+
 class BaseCollector(ABC):
     @abstractmethod
     def collect(self, source: Any) -> CollectorResult:

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.collectors import router as collectors_router
 from app.api.routes.comments import router as comments_router
+from app.api.routes.collection_tasks import router as collection_tasks_router
 from app.api.routes.content_pools import router as content_pools_router
 from app.api.routes.crawl_tasks import router as crawl_tasks_router
 from app.api.routes.daily_reports import router as daily_reports_router
@@ -30,6 +31,7 @@ app.add_middleware(
 )
 app.include_router(posts_router)
 app.include_router(comments_router)
+app.include_router(collection_tasks_router)
 app.include_router(leads_router)
 app.include_router(daily_reports_router)
 app.include_router(pending_competitors_router)
