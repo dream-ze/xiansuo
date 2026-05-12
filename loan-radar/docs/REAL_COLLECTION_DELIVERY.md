@@ -239,7 +239,7 @@ Authorization: Bearer ***
 - backend/app/collectors/playwright_collector.py
 - backend/app/main.py
 
-目标：为真实采集接入建立基础设施，但不要实现 ExternalApiCollector 的真实 HTTP 调用。
+目标：为真实采集接入建立基础设施，并完成 ExternalApiCollector / GenericWebCollector / XhsCollector 初版能力接入。
 
 必须完成：
 1. 在 backend/app/collectors/base.py 中让 CollectorResult 支持 metadata: dict[str, Any] | None，默认空 dict 或 None。
@@ -395,7 +395,7 @@ Authorization: Bearer ***
    - external_api：provider、endpoint、api_key_env、max_posts、max_comments_per_post
 3. createPayloadFromForm 生成符合文档标准的 config。
 4. 保留现有创建、删除、启停、立即采集功能。
-5. 如果 /api/collectors/test 尚未实现，测试采集按钮可以先不启用，或显示“接口待实现”，不要导致页面崩溃。
+5. `/api/collectors` 与 `/api/collectors/validate-config` 已实现；若 `/api/collectors/test` 未实现，测试采集按钮可显示“接口待实现”，但不要导致页面崩溃。
 6. 增加必要的 TypeScript 类型定义。
 7. 保持页面中文提示清晰。
 8. 前端只填写 api_key_env 环境变量名，不填写真实 API Key。
@@ -472,7 +472,7 @@ Authorization: Bearer ***
 1. 新增 backend/app/collectors/xhs_collector.py。
 2. 新增 backend/app/collectors/douyin_collector.py。
 3. 新增 backend/app/collectors/zhihu_collector.py。
-4. 每个 collector 都实现 collect(source)，当前可返回明确 NotImplementedError 或 ValueError，说明：平台专用直连暂未实现，建议使用 collector_type=external_api 接入合规采集服务。
+4. `mock`、`playwright`、`external_api`、`generic_web`、`xhs` 已具备可运行实现；`douyin`、`zhihu` 仍保留明确 NotImplementedError 提示，建议先使用 `external_api` 接入合规采集服务。
 5. 更新 CollectorFactory 支持 collector_type=xhs/douyin/zhihu。
 6. 更新 backend/app/collectors/__init__.py 导出这些 collector。
 7. 更新 docs/REAL_COLLECTION_PLAN.md，明确平台专用 collector 目前只是扩展点。

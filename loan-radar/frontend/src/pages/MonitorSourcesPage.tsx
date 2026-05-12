@@ -4,9 +4,11 @@ import { useNavigate } from "react-router-dom";
 import {
   createMonitorSource,
   deleteMonitorSource,
+  getCollectorsCapabilities,
   getMonitorSources,
   toggleMonitorSource,
   crawlMonitorSource,
+  type CollectorCapability,
   type CrawlTask,
   type MonitorSource,
   type MonitorSourceCreatePayload,
@@ -27,9 +29,55 @@ const SOURCE_TYPE_OPTIONS = [
 ];
 
 const COLLECTOR_TYPE_OPTIONS = [
-  { label: "Mock", value: "mock" },
-  { label: "Playwright", value: "playwright" },
+  { label: "mock：演示 / 回归测试", value: "mock" },
+  { label: "playwright：指定公开帖子链接", value: "playwright" },
+  { label: "external_api：外部采集 API", value: "external_api" },
+  { label: "generic_web：通用网页采集", value: "generic_web" },
+  { label: "xhs：小红书采集器", value: "xhs" },
 ];
+
+export const SOURCE_ALLOWED_COLLECTOR_TYPES: Record<string, string[]> = {
+  keyword: ["mock", "external_api", "xhs"],
+  competitor_account: ["mock", "external_api", "xhs"],
+  manual_post: ["playwright", "generic_web", "xhs"],
+  hot_post_rule: ["mock"],
+};
+
+export function getAllowedCollectorTypesBySourceType(sourceType: string): string[] {
+  return SOURCE_ALLOWED_COLLECTOR_TYPES[sourceType] ?? ["mock"];
+}
+
+export function getDynamicFieldKeysByCollectorType(collectorType: string): string[] {
+  if (collectorType === "external_api") {
+    return ["entry_url", "endpoint", "api_key_env", "max_posts", "max_comments_per_post"];
+  }
+  if (collectorType === "generic_web") {
+    return [
+      "entry_url",
+      "selectors.post_container",
+      "selectors.title",
+      "selectors.content",
+      "selectors.author",
+      "selectors.comment_item",
+      "max_posts",
+      "max_comments_per_post",
+    ];
+  }
+  if (collectorType === "xhs") {
+    return [
+      "entry_url_or_value",
+      "cookies",
+      "max_posts",
+      "max_comments_per_post",
+      "selectors.note_container",
+      "selectors.title",
+      "selectors.content",
+      "selectors.author",
+      "selectors.comment_item",
+    ];
+  }
+  return ["max_posts", "max_comments_per_post"];
+}
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -51,7 +99,7 @@ function formatDateTime(value: string | null | undefined) {
   }).format(date);
 }
 
-type CreateFormState = {
+export type CreateFormState = {
   source_type: string;
   platform: string;
   name: string;
@@ -60,9 +108,19 @@ type CreateFormState = {
   max_posts: string;
   max_comments_per_post: string;
   enabled: boolean;
+  entry_url: string;
+  endpoint: string;
+  api_key_env: string;
+  cookies: string;
+  selector_post_container: string;
+  selector_title: string;
+  selector_content: string;
+  selector_author: string;
+  selector_comment_item: string;
+  selector_note_container: string;
 };
 
-const DEFAULT_CREATE_FORM: CreateFormState = {
+export const DEFAULT_CREATE_FORM: CreateFormState = {
   source_type: "keyword",
   platform: "xhs",
   name: "关键词 - 征信花了",
@@ -71,28 +129,109 @@ const DEFAULT_CREATE_FORM: CreateFormState = {
   max_posts: "10",
   max_comments_per_post: "10",
   enabled: true,
+  entry_url: "",
+  endpoint: "",
+  api_key_env: "",
+  cookies: "",
+  selector_post_container: "",
+  selector_title: "",
+  selector_content: "",
+  selector_author: "",
+  selector_comment_item: "",
+  selector_note_container: "",
 };
 
-function createPayloadFromForm(form: CreateFormState): MonitorSourceCreatePayload {
-  const maxPosts = Number(form.max_posts);
-  const maxCommentsPerPost = Number(form.max_comments_per_post);
-  const collectorType = form.source_type === "manual_post" ? form.collector_type : "mock";
+function toPositiveInteger(value: string, fieldName: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldName} 必须是正整数`);
+  }
+  return parsed;
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//.test(value);
+}
+
+export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreatePayload {
+  const sourceType = form.source_type;
+  const collectorType = form.collector_type;
+  const maxPosts = toPositiveInteger(form.max_posts, "max_posts");
+  const maxCommentsPerPost = toPositiveInteger(form.max_comments_per_post, "max_comments_per_post");
+
+  const payloadValue = form.value.trim();
+  const entryUrl = form.entry_url.trim();
+  const endpoint = form.endpoint.trim();
+  const apiKeyEnv = form.api_key_env.trim();
+  const cookies = form.cookies.trim();
+
+  if (sourceType === "manual_post" && collectorType === "playwright" && !isHttpUrl(payloadValue)) {
+    throw new Error("manual_post + playwright 时，value 必须是 http/https URL");
+  }
+
+  if (collectorType === "generic_web" && !entryUrl && !payloadValue) {
+    throw new Error("generic_web 必须填写 entry_url 或 value");
+  }
+
+  if (collectorType === "external_api" && !endpoint) {
+    throw new Error("external_api 必须填写 endpoint");
+  }
+
+  if (collectorType === "xhs" && !cookies) {
+    throw new Error("xhs 必须填写 cookies");
+  }
+
   const config: Record<string, unknown> = {
     collector_type: collectorType,
+    max_posts: maxPosts,
+    max_comments_per_post: maxCommentsPerPost,
   };
 
-  if (form.source_type !== "manual_post" && Number.isFinite(maxPosts) && maxPosts > 0) {
-    config.max_posts = maxPosts;
-  }
-  if (Number.isFinite(maxCommentsPerPost) && maxCommentsPerPost > 0) {
-    config.max_comments_per_post = maxCommentsPerPost;
+  if (collectorType === "external_api") {
+    config.external_api = {
+      endpoint,
+      ...(apiKeyEnv ? { api_key_env: apiKeyEnv } : {}),
+    };
   }
 
+  if (collectorType === "generic_web") {
+    const selectors: Record<string, string> = {};
+    if (form.selector_post_container.trim()) selectors.post_container = form.selector_post_container.trim();
+    if (form.selector_title.trim()) selectors.title = form.selector_title.trim();
+    if (form.selector_content.trim()) selectors.content = form.selector_content.trim();
+    if (form.selector_author.trim()) selectors.author = form.selector_author.trim();
+    if (form.selector_comment_item.trim()) selectors.comment_item = form.selector_comment_item.trim();
+
+    config.entry_url = entryUrl || payloadValue;
+    if (Object.keys(selectors).length > 0) {
+      config.selectors = selectors;
+    }
+  }
+
+  if (collectorType === "xhs") {
+    const selectors: Record<string, string> = {};
+    if (form.selector_note_container.trim()) selectors.note_container = form.selector_note_container.trim();
+    if (form.selector_title.trim()) selectors.title = form.selector_title.trim();
+    if (form.selector_content.trim()) selectors.content = form.selector_content.trim();
+    if (form.selector_author.trim()) selectors.author = form.selector_author.trim();
+    if (form.selector_comment_item.trim()) selectors.comment_item = form.selector_comment_item.trim();
+
+    config.cookies = cookies;
+    if (entryUrl) {
+      config.entry_url = entryUrl;
+    }
+    if (Object.keys(selectors).length > 0) {
+      config.selectors = selectors;
+    }
+  }
+
+  const finalValue = collectorType === "xhs" && entryUrl && !payloadValue ? entryUrl : payloadValue;
+
   return {
-    source_type: form.source_type,
+    source_type: sourceType,
     platform: form.platform,
     name: form.name.trim(),
-    value: form.value.trim(),
+    value: finalValue,
     config,
     enabled: form.enabled,
     last_crawled_at: null,
@@ -111,6 +250,17 @@ export default function MonitorSourcesPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [collectorCapabilities, setCollectorCapabilities] = useState<Record<string, CollectorCapability>>({});
+  const [capabilityLoading, setCapabilityLoading] = useState(true);
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
+
+  const allowedCollectorTypes = useMemo(() => {
+    return getAllowedCollectorTypesBySourceType(createForm.source_type);
+  }, [createForm.source_type]);
+
+  const collectorTypeOptions = useMemo(() => {
+    return COLLECTOR_TYPE_OPTIONS.filter((option) => allowedCollectorTypes.includes(option.value));
+  }, [allowedCollectorTypes]);
 
   async function loadSources() {
     setLoading(true);
@@ -126,22 +276,57 @@ export default function MonitorSourcesPage() {
     }
   }
 
+  async function loadCollectorCapabilities() {
+    setCapabilityLoading(true);
+    setCapabilityError(null);
+
+    try {
+      const result = await getCollectorsCapabilities();
+      setCollectorCapabilities(result.collectors || {});
+    } catch {
+      setCapabilityError("采集器能力加载失败");
+      setCollectorCapabilities({});
+    } finally {
+      setCapabilityLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadSources();
   }, [refreshTick]);
 
+  useEffect(() => {
+    void loadCollectorCapabilities();
+  }, []);
+
+  useEffect(() => {
+    if (!allowedCollectorTypes.includes(createForm.collector_type)) {
+      setCreateForm((current) => ({
+        ...current,
+        collector_type: allowedCollectorTypes[0] ?? "mock",
+      }));
+    }
+  }, [allowedCollectorTypes, createForm.collector_type]);
+
   const hasItems = useMemo(() => items.length > 0, [items]);
-  const isManualPost = createForm.source_type === "manual_post";
+  const selectedCollectorType = createForm.collector_type;
+  const capabilityEntries = useMemo(() => Object.entries(collectorCapabilities), [collectorCapabilities]);
 
   function updateSourceType(sourceType: string) {
-    setCreateForm((current) => ({
-      ...current,
-      source_type: sourceType,
-      collector_type: sourceType === "manual_post" ? "playwright" : "mock",
-      name: sourceType === "manual_post" ? "真实帖子链接" : current.name,
-      value: sourceType === "manual_post" ? "" : current.value,
-      max_posts: sourceType === "manual_post" ? "1" : current.max_posts,
-    }));
+    setCreateForm((current) => {
+      const nextAllowed = getAllowedCollectorTypesBySourceType(sourceType);
+      const nextCollectorType = nextAllowed.includes(current.collector_type)
+        ? current.collector_type
+        : nextAllowed[0];
+
+      return {
+        ...current,
+        source_type: sourceType,
+        collector_type: nextCollectorType,
+        name: sourceType === "manual_post" ? "真实帖子链接" : current.name,
+        value: sourceType === "manual_post" ? "" : current.value,
+      };
+    });
   }
 
   async function refreshList() {
@@ -155,16 +340,11 @@ export default function MonitorSourcesPage() {
     setActionMessage(null);
 
     try {
-      const payload = createPayloadFromForm(createForm);
+      const payload = buildPayloadFromForm(createForm);
       if (!payload.name || !payload.value) {
         throw new Error("名称和内容/链接不能为空");
       }
-      if (payload.source_type === "manual_post" && payload.config && typeof payload.config === "object") {
-        const config = payload.config as Record<string, unknown>;
-        if (config.collector_type === "playwright" && !/^https?:\/\//.test(payload.value)) {
-          throw new Error("真实采集只支持 http/https 公开帖子链接");
-        }
-      }
+
       const created = await createMonitorSource(payload);
       await refreshList();
       setActionMessage(`新增成功：${created.name}`);
@@ -243,9 +423,46 @@ export default function MonitorSourcesPage() {
       </header>
 
       <section className="card">
+        <div className="card-header card-header-row">
+          <div>
+            <h2>采集器能力说明</h2>
+            <p>来自接口 GET /api/collectors，展示当前后端已注册能力。</p>
+          </div>
+          <button type="button" onClick={() => void loadCollectorCapabilities()} disabled={capabilityLoading}>
+            {capabilityLoading ? "加载中..." : "刷新能力"}
+          </button>
+        </div>
+        {capabilityError ? <p className="inline-error">采集器能力加载失败</p> : null}
+        {!capabilityError && capabilityEntries.length > 0 ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>采集器</th>
+                  <th>状态</th>
+                  <th>支持 source_type</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                {capabilityEntries.map(([key, capability]) => (
+                  <tr key={key}>
+                    <td>{capability.name || key}</td>
+                    <td>{capability.status}</td>
+                    <td>{Array.isArray(capability.supports) ? capability.supports.join(" / ") : "-"}</td>
+                    <td className="cell-break">{capability.description || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="card">
         <div className="card-header">
           <h2>新增监控源</h2>
-          <p>支持新增关键词、同行账号、指定帖子链接、爆款规则。</p>
+          <p>根据 source_type 选择可用 collector_type，并填写对应配置。</p>
         </div>
         <form className="form-grid" onSubmit={handleCreate}>
           <label>
@@ -287,7 +504,7 @@ export default function MonitorSourcesPage() {
             <input
               value={createForm.value}
               onChange={(event) => setCreateForm((current) => ({ ...current, value: event.target.value }))}
-              placeholder={isManualPost ? "公开帖子链接，例如：https://..." : "关键词/账号链接/规则内容"}
+              placeholder={createForm.source_type === "manual_post" ? "公开帖子链接，例如：https://..." : "关键词/账号链接/规则内容"}
             />
           </label>
           <label>
@@ -296,25 +513,156 @@ export default function MonitorSourcesPage() {
               value={createForm.collector_type}
               onChange={(event) => setCreateForm((current) => ({ ...current, collector_type: event.target.value }))}
             >
-              {COLLECTOR_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value} disabled={option.value === "playwright" && !isManualPost}>
+              {collectorTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
-            <small className="field-hint">
-              {isManualPost ? "Playwright 只采集公开可访问单帖；不支持登录、验证码或批量搜索。" : "关键词、同行账号和爆款规则当前使用 Mock 采集。"}
-            </small>
           </label>
-          <label className={isManualPost ? "field-muted" : ""}>
+
+          {(selectedCollectorType === "external_api" || selectedCollectorType === "generic_web" || selectedCollectorType === "xhs") && (
+            <label>
+              <span>entry_url</span>
+              <input
+                value={createForm.entry_url}
+                onChange={(event) => setCreateForm((current) => ({ ...current, entry_url: event.target.value }))}
+                placeholder="https://example.com/..."
+              />
+            </label>
+          )}
+
+          {selectedCollectorType === "external_api" && (
+            <>
+              <label>
+                <span>endpoint</span>
+                <input
+                  value={createForm.endpoint}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, endpoint: event.target.value }))}
+                  placeholder="https://your-api.example.com/collect"
+                />
+              </label>
+              <label>
+                <span>api_key_env</span>
+                <input
+                  value={createForm.api_key_env}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, api_key_env: event.target.value }))}
+                  placeholder="EXTERNAL_COLLECTOR_API_KEY"
+                />
+              </label>
+            </>
+          )}
+
+          {selectedCollectorType === "generic_web" && (
+            <>
+              <label>
+                <span>selectors.post_container</span>
+                <input
+                  value={createForm.selector_post_container}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_post_container: event.target.value }))}
+                  placeholder="article, .post"
+                />
+              </label>
+              <label>
+                <span>selectors.title</span>
+                <input
+                  value={createForm.selector_title}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_title: event.target.value }))}
+                  placeholder="h1, h2"
+                />
+              </label>
+              <label>
+                <span>selectors.content</span>
+                <input
+                  value={createForm.selector_content}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_content: event.target.value }))}
+                  placeholder="article, .content"
+                />
+              </label>
+              <label>
+                <span>selectors.author</span>
+                <input
+                  value={createForm.selector_author}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_author: event.target.value }))}
+                  placeholder=".author"
+                />
+              </label>
+              <label>
+                <span>selectors.comment_item</span>
+                <input
+                  value={createForm.selector_comment_item}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_comment_item: event.target.value }))}
+                  placeholder=".comment"
+                />
+              </label>
+            </>
+          )}
+
+          {selectedCollectorType === "xhs" && (
+            <>
+              <label className="form-grid-span-2">
+                <span>cookies</span>
+                <textarea
+                  className="text-area"
+                  value={createForm.cookies}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, cookies: event.target.value }))}
+                  placeholder="sessionid=...; userid=..."
+                />
+                <small className="field-hint">
+                  仅保存在本地开发数据库用于测试；不要打印到日志；不要提交到 Git；生产环境应改为安全凭证管理；不做验证码绕过、不做批量账号、不做代理池。
+                </small>
+              </label>
+              <label>
+                <span>selectors.note_container（可选）</span>
+                <input
+                  value={createForm.selector_note_container}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_note_container: event.target.value }))}
+                  placeholder="div[class*='feed-item']"
+                />
+              </label>
+              <label>
+                <span>selectors.title（可选）</span>
+                <input
+                  value={createForm.selector_title}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_title: event.target.value }))}
+                  placeholder="h2, h3"
+                />
+              </label>
+              <label>
+                <span>selectors.content（可选）</span>
+                <input
+                  value={createForm.selector_content}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_content: event.target.value }))}
+                  placeholder="p, .desc"
+                />
+              </label>
+              <label>
+                <span>selectors.author（可选）</span>
+                <input
+                  value={createForm.selector_author}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_author: event.target.value }))}
+                  placeholder=".author"
+                />
+              </label>
+              <label>
+                <span>selectors.comment_item（可选）</span>
+                <input
+                  value={createForm.selector_comment_item}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_comment_item: event.target.value }))}
+                  placeholder=".comment-item"
+                />
+              </label>
+            </>
+          )}
+
+          <label>
             <span>max_posts</span>
             <input
               type="number"
               min={1}
-              disabled={isManualPost}
               value={createForm.max_posts}
               onChange={(event) => setCreateForm((current) => ({ ...current, max_posts: event.target.value }))}
-              placeholder={isManualPost ? "指定帖子固定为 1" : "例如：10"}
+              placeholder="例如：10"
             />
           </label>
           <label>
@@ -343,11 +691,6 @@ export default function MonitorSourcesPage() {
             </button>
           </div>
         </form>
-        {isManualPost ? (
-          <div className="state-panel state-empty" style={{ marginTop: 14 }}>
-            <p>真实采集 MVP 只处理公开帖子链接。若页面需要登录、结构变化或加载超时，任务会失败并在采集任务中心展示原因。</p>
-          </div>
-        ) : null}
         {createError ? <p className="inline-error">{createError}</p> : null}
       </section>
 

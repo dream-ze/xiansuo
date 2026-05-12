@@ -19,6 +19,10 @@ select {
   font: inherit;
 }
 
+textarea {
+  font: inherit;
+}
+
 button {
   border: 1px solid #d1d5db;
   background: white;
@@ -39,6 +43,16 @@ select {
   border-radius: 8px;
   padding: 0.65rem 0.8rem;
   background: white;
+}
+
+.text-area {
+  width: 100%;
+  min-height: 96px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.65rem 0.8rem;
+  background: white;
+  resize: vertical;
 }
 
 .field-hint {

@@ -9,6 +9,45 @@ from app.collectors.factory import CollectorFactory
 
 router = APIRouter(prefix="/api/collectors", tags=["collectors"])
 
+_SENSITIVE_KEYWORDS = {
+    "cookie",
+    "token",
+    "api_key",
+    "apikey",
+    "authorization",
+    "secret",
+    "password",
+}
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lower_key = key.lower()
+    return any(keyword in lower_key for keyword in _SENSITIVE_KEYWORDS)
+
+
+def _redact_value(value: Any) -> str:
+    if isinstance(value, str) and value:
+        if len(value) <= 6:
+            return "***"
+        return f"{value[:2]}***{value[-2:]}"
+    return "***"
+
+
+def _redact_sensitive_data(data: Any) -> Any:
+    if isinstance(data, dict):
+        redacted: dict[str, Any] = {}
+        for key, value in data.items():
+            if _is_sensitive_key(str(key)):
+                redacted[key] = _redact_value(value)
+            else:
+                redacted[key] = _redact_sensitive_data(value)
+        return redacted
+
+    if isinstance(data, list):
+        return [_redact_sensitive_data(item) for item in data]
+
+    return data
+
 
 @router.get("")
 def get_collectors() -> dict[str, Any]:
@@ -49,10 +88,10 @@ def validate_collector_config(config: dict[str, Any]) -> dict[str, Any]:
 
     try:
         config_obj = CollectorConfig.parse(config)
-    except Exception as e:
+    except Exception:
         return {
             "valid": False,
-            "errors": [f"Config parse error: {str(e)}"],
+            "errors": ["Config parse error"],
             "warnings": [],
             "config": None,
         }
@@ -84,7 +123,7 @@ def validate_collector_config(config: dict[str, Any]) -> dict[str, Any]:
         "valid": len(errors) == 0,
         "errors": errors,
         "warnings": warnings,
-        "config": config_obj.dict() if len(errors) == 0 else None,
+        "config": _redact_sensitive_data(config_obj.model_dump()) if len(errors) == 0 else None,
     }
 
 

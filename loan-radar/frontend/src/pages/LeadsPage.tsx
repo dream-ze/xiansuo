@@ -13,10 +13,10 @@ const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
 const STATUS_OPTIONS = ["", "new", "contacted", "invalid", "converted"];
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
-  new: "new",
-  contacted: "contacted",
-  invalid: "invalid",
-  converted: "converted",
+  new: "新增",
+  contacted: "已联系",
+  invalid: "无效",
+  converted: "已转化",
 };
 
 function downloadBlob(blob: Blob, filename: string) {

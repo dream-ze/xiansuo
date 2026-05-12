@@ -153,6 +153,26 @@ class TestCollectorsAPI:
         
         assert data["valid"] is True
 
+    def test_validate_config_masks_sensitive_fields(self, client):
+        """POST /api/collectors/validate-config 应统一脱敏敏感字段"""
+        config = {
+            "collector_type": "xhs",
+            "cookies": "sessionid=super_secret_cookie",
+            "external_api": {
+                "endpoint": "https://example.com/collect",
+                "api_key": "sk-super-secret",
+            },
+            "user_token": "my-very-secret-token",
+        }
+        response = client.post("/api/collectors/validate-config", json=config)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["valid"] is True
+        assert data["config"]["cookies"] == "se***ie"
+        assert data["config"]["external_api"]["api_key"] == "sk***et"
+        assert data["config"]["user_token"] == "my***en"
+
     def test_validate_config_warning_for_implementing(self, client):
         """POST /api/collectors/validate-config 应为实现中的采集器给出警告"""
         config = {

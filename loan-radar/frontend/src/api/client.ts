@@ -35,6 +35,23 @@ export type MonitorSourceCreatePayload = {
   last_crawled_at?: string | null;
 };
 
+export type CollectorCapability = {
+  name: string;
+  description: string;
+  status: string;
+  supports: string[];
+  config?: unknown;
+};
+
+export type CollectorCapabilitiesResponse = {
+  collectors: Record<string, CollectorCapability>;
+  summary?: {
+    ready?: string[];
+    implementing?: string[];
+    planned?: string[];
+  };
+};
+
 export type CrawlTask = {
   id: number;
   source_id: number;
@@ -284,6 +301,35 @@ export function crawlMonitorSource(id: number) {
   return requestJson<CrawlTask>(`/api/monitor-sources/${id}/crawl`, {
     method: "POST",
   });
+}
+
+export async function getCollectorsCapabilities() {
+  const response = await fetch(`${API_BASE_URL}/api/collectors`, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`采集器能力接口响应异常: ${response.status} ${response.statusText}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`采集器能力接口请求失败: ${response.status} ${response.statusText}`);
+  }
+
+  if (payload && typeof payload === "object" && "success" in payload && "data" in payload) {
+    const wrapped = payload as ApiResponse<CollectorCapabilitiesResponse>;
+    if (!wrapped.success || !wrapped.data) {
+      throw new Error(wrapped.message || "采集器能力接口返回失败");
+    }
+    return wrapped.data;
+  }
+
+  return payload as CollectorCapabilitiesResponse;
 }
 
 export function getCrawlTasks() {

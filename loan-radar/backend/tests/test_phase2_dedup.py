@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.services.crawl_pipeline_service import (
@@ -22,7 +23,16 @@ from app.core.database import SessionLocal
 def db():
     """创建测试数据库连接"""
     session = SessionLocal()
+    # 每次用例前先清理相关表，避免历史测试数据导致唯一约束冲突。
+    session.execute(delete(Comment))
+    session.execute(delete(Post))
+    session.execute(delete(MonitorSource))
+    session.commit()
     yield session
+    session.execute(delete(Comment))
+    session.execute(delete(Post))
+    session.execute(delete(MonitorSource))
+    session.commit()
     session.close()
 
 

@@ -344,7 +344,10 @@
 
 ## 十、真实指定链接采集配置
 
-当前已实现的真实采集入口仍复用监控源接口，不新增 `/api/collectors`。
+当前真实采集入口包括两部分：
+
+- 监控源接口：`/api/monitor-sources`（创建/管理/触发采集）
+- 采集器能力接口：`/api/collectors`、`/api/collectors/validate-config`、`/api/collectors/health`
 
 ### 10.1 创建 manual_post Playwright 监控源
 
@@ -391,15 +394,15 @@
 
 ### 10.3 后续真实采集规划
 
-以下能力仍是规划，当前尚未实现：
+当前能力状态：
 
-- `/api/collectors`
-- `/api/collectors/validate-config`
-- `/api/collectors/test`
-- ExternalApiCollector
-- GenericWebCollector
-- 平台专用 xhs/douyin/zhihu collector
-- 定时采集 / 异步采集队列
+- 已实现：`/api/collectors`
+- 已实现：`/api/collectors/validate-config`
+- 已实现：`/api/collectors/health`
+- 已实现：ExternalApiCollector
+- 已实现：GenericWebCollector
+- 已实现：XhsCollector（初版）
+- 尚未实现或不稳定：定时采集、异步队列、抖音/知乎真实采集
 
 ---
 
@@ -450,9 +453,9 @@
 
 ## 十二、尚未实现（不在当前 API 中）
 
-以下接口在规划中提及但 **目前不存在**，需要前端避免调用：
+以下能力暂未实现或不稳定，需要前端避免依赖：
 
-- 真实采集能力接口：`/api/collectors`、`/api/collectors/validate-config`、`/api/collectors/test`
-- ExternalApiCollector / GenericWebCollector
+- `/api/collectors/test`
 - 采集任务的定时调度 / 异步执行接口
 - 后台批量 / 定时生成 daily_report
+- 抖音/知乎平台真实采集

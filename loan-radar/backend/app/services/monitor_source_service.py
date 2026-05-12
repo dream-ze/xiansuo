@@ -1,6 +1,7 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.collectors.config import CollectorConfig
 from app.models.monitor_source import MonitorSource
 from app.schemas.monitor_source import MonitorSourceCreate, MonitorSourceUpdate
 
@@ -45,6 +46,11 @@ def validate_monitor_source_payload(payload: MonitorSourceCreate | MonitorSource
         validate_platform(platform)
 
     collector_type = _collector_type(payload.config)
+    config_obj = CollectorConfig.parse(payload.config)
+    is_valid, error_message = config_obj.validate_collector_type()
+    if not is_valid:
+        raise ValueError(error_message)
+
     if collector_type == "playwright":
         if source_type != "manual_post":
             raise ValueError("playwright collector only supports manual_post")
