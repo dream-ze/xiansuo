@@ -1,9 +1,8 @@
 import asyncio
-from datetime import datetime, timezone
-from hashlib import sha1
 from typing import Any
 
-from app.collectors.base import BaseCollector, CollectedComment, CollectedPost, CollectorResult
+from app.collectors.base import BaseCollector, CollectorResult
+from app.collectors.page_parsers.factory import PageParserFactory
 
 
 class PlaywrightCollector(BaseCollector):
@@ -35,7 +34,14 @@ class PlaywrightCollector(BaseCollector):
 
         timeout_ms = 15_000
         platform = getattr(source, "platform", "other")
-        now = datetime.now(timezone.utc)
+        config = getattr(source, "config", None) or {}
+        if isinstance(config, dict):
+            timeout_ms = int(config.get("timeout_ms") or timeout_ms)
+            wait_after_load_ms = int(config.get("wait_after_load_ms") or 1200)
+            max_comments_per_post = int(config.get("max_comments_per_post") or 50)
+        else:
+            wait_after_load_ms = 1200
+            max_comments_per_post = 50
 
         try:
             async with async_playwright() as playwright:
@@ -54,67 +60,19 @@ class PlaywrightCollector(BaseCollector):
 
                 try:
                     await page.goto(source_url, wait_until="domcontentloaded", timeout=timeout_ms)
-                    await page.wait_for_timeout(1200)
-
-                    title = await self._extract_text(page, [
-                        "h1",
-                        "article h1",
-                        "[data-testid='title']",
-                        ".title",
-                    ])
-                    content = await self._extract_text(page, [
-                        "article",
-                        "main article",
-                        "[data-testid='content']",
-                        ".content",
-                    ])
-                    author = await self._extract_text(page, [
-                        "[data-testid='author']",
-                        "[rel='author']",
-                        ".author",
-                        ".user-name",
-                    ])
-
-                    await self._scroll_comments(page)
-                    comment_texts = await self._extract_comments(page)
-
-                    post_key = source_url.encode("utf-8")
-                    post_id = f"manual-{sha1(post_key).hexdigest()[:16]}"
-                    post = CollectedPost(
+                    await page.wait_for_timeout(wait_after_load_ms)
+                    parser = PageParserFactory.create(
                         platform=platform,
-                        post_id=post_id,
-                        title=title,
-                        content=content,
-                        post_url=source_url,
-                        author_name=author,
-                        comment_count=len(comment_texts),
-                        publish_time=now,
-                        raw_data={
-                            "collector": "playwright",
-                            "source_url": source_url,
-                            "browser_channel": launch_channel,
-                        },
+                        max_comments_per_post=max_comments_per_post,
                     )
-
-                    comments = [
-                        CollectedComment(
-                            platform=platform,
-                            post_id=post_id,
-                            comment_id=f"{post_id}-c-{index + 1}",
-                            content=text,
-                            publish_time=now,
-                            raw_data={
-                                "collector": "playwright",
-                                "source_url": source_url,
-                                "browser_channel": launch_channel,
-                            },
-                        )
-                        for index, text in enumerate(comment_texts)
-                    ]
-
-                    return CollectorResult(posts=[post], comments=comments)
+                    return await parser.parse(
+                        page=page,
+                        source_url=source_url,
+                        platform=platform,
+                        browser_channel=launch_channel,
+                    )
                 except PlaywrightTimeoutError as error:
-                    raise RuntimeError(f"playwright timeout when loading or extracting page: {error}") from error
+                    raise RuntimeError(f"page load timeout: {error}") from error
                 except Exception as error:
                     raise RuntimeError(f"playwright collect failed: {error}") from error
                 finally:
@@ -122,58 +80,3 @@ class PlaywrightCollector(BaseCollector):
                     await browser.close()
         except Exception:
             raise
-
-    async def _extract_text(self, page: Any, selectors: list[str]) -> str | None:
-        for selector in selectors:
-            try:
-                locator = page.locator(selector).first
-                if await locator.count() == 0:
-                    continue
-                text = (await locator.inner_text()).strip()
-                if text:
-                    return text[:2000]
-            except Exception:
-                continue
-        return None
-
-    async def _scroll_comments(self, page: Any) -> None:
-        for _ in range(6):
-            try:
-                await page.mouse.wheel(0, 1600)
-                await page.wait_for_timeout(500)
-            except Exception:
-                break
-
-    async def _extract_comments(self, page: Any) -> list[str]:
-        selectors = [
-            "[data-testid='comment']",
-            ".comment-item",
-            ".comment",
-            "[class*='comment']",
-        ]
-        comments: list[str] = []
-        seen: set[str] = set()
-
-        for selector in selectors:
-            try:
-                elements = page.locator(selector)
-                count = await elements.count()
-                if count == 0:
-                    continue
-                limit = min(count, 100)
-                for index in range(limit):
-                    raw_text = await elements.nth(index).inner_text()
-                    text = (raw_text or "").strip()
-                    if not text:
-                        continue
-                    text = text.replace("\n", " ")
-                    if text in seen:
-                        continue
-                    seen.add(text)
-                    comments.append(text[:1000])
-                if comments:
-                    break
-            except Exception:
-                continue
-
-        return comments

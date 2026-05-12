@@ -1,10 +1,13 @@
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text, UniqueConstraint, func
 
 from app.core.database import Base
 
 
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = (
+        UniqueConstraint("platform", "post_id", name="uq_posts_platform_post_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     platform = Column(String(50), nullable=False, index=True)

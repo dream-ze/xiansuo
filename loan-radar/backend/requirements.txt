@@ -6,3 +6,6 @@ psycopg2-binary
 pydantic-settings
 python-dotenv
 playwright==1.59.0
+pytest
+requests
+httpx

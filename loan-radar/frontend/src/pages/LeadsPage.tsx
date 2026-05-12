@@ -1,0 +1,424 @@
+import { useEffect, useMemo, useState } from "react";
+
+import {
+  exportLeadsCsv,
+  getLeads,
+  updateLeadStatus,
+  type Lead,
+  type LeadQueryParams,
+} from "../api/client";
+
+const LEAD_LEVEL_OPTIONS = ["", "A", "B", "C", "D"];
+const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
+const STATUS_OPTIONS = ["", "new", "contacted", "invalid", "converted"];
+
+const LEAD_STATUS_LABELS: Record<string, string> = {
+  new: "new",
+  contacted: "contacted",
+  invalid: "invalid",
+  converted: "converted",
+};
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function buildEvidenceSections(evidence: Lead["evidence"]) {
+  if (!evidence || typeof evidence !== "object") {
+    return [] as Array<{ title: string; value: string }>;
+  }
+
+  const typedEvidence = evidence as Record<string, unknown>;
+  const sections: Array<{ title: string; value: string }> = [];
+
+  const matchedWords = typedEvidence.matched_words;
+  if (matchedWords && typeof matchedWords === "object") {
+    sections.push({ title: "命中关键词", value: JSON.stringify(matchedWords, null, 2) });
+  }
+
+  const amounts = typedEvidence.amounts;
+  if (amounts) {
+    sections.push({ title: "金额信息", value: JSON.stringify(amounts, null, 2) });
+  }
+
+  const scoreBreakdown = typedEvidence.score_breakdown;
+  if (scoreBreakdown && typeof scoreBreakdown === "object") {
+    sections.push({ title: "评分拆解", value: JSON.stringify(scoreBreakdown, null, 2) });
+  }
+
+  Object.entries(typedEvidence).forEach(([key, value]) => {
+    if (key === "matched_words" || key === "amounts" || key === "score_breakdown") {
+      return;
+    }
+    if (typeof value === "string") {
+      sections.push({ title: key, value });
+    }
+  });
+
+  return sections;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return <span className={`status-pill status-${status}`}>{status}</span>;
+}
+
+export default function LeadsPage() {
+  const [items, setItems] = useState<Lead[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [detailLead, setDetailLead] = useState<Lead | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [statTotals, setStatTotals] = useState<Record<string, number>>({ all: 0, A: 0, B: 0, C: 0, D: 0 });
+  const [filters, setFilters] = useState<LeadQueryParams>({
+    lead_level: "",
+    demand_type: "",
+    platform: "",
+    status: "",
+    source_type: "",
+    keyword: "",
+  });
+  const [draftStatuses, setDraftStatuses] = useState<Record<number, string>>({});
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const hasItems = useMemo(() => items.length > 0, [items]);
+
+  async function loadData(nextPage = page, nextFilters = filters) {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const commonFilters = {
+        demand_type: nextFilters.demand_type || undefined,
+        platform: nextFilters.platform || undefined,
+        status: nextFilters.status || undefined,
+        source_type: nextFilters.source_type || undefined,
+        keyword: nextFilters.keyword || undefined,
+      };
+
+      const [listResult, allResult, aResult, bResult, cResult, dResult] = await Promise.all([
+        getLeads({
+          ...commonFilters,
+          lead_level: nextFilters.lead_level || undefined,
+          page: nextPage,
+          page_size: pageSize,
+        }),
+        getLeads({ ...commonFilters, page: 1, page_size: 1 }),
+        getLeads({ ...commonFilters, lead_level: "A", page: 1, page_size: 1 }),
+        getLeads({ ...commonFilters, lead_level: "B", page: 1, page_size: 1 }),
+        getLeads({ ...commonFilters, lead_level: "C", page: 1, page_size: 1 }),
+        getLeads({ ...commonFilters, lead_level: "D", page: 1, page_size: 1 }),
+      ]);
+
+      setItems(listResult.items);
+      setTotal(listResult.total);
+      setPage(listResult.page);
+      setStatTotals({
+        all: allResult.total,
+        A: aResult.total,
+        B: bResult.total,
+        C: cResult.total,
+        D: dResult.total,
+      });
+      setDraftStatuses((current) => {
+        const nextDrafts: Record<number, string> = {};
+        listResult.items.forEach((lead) => {
+          nextDrafts[lead.id] = current[lead.id] ?? lead.status;
+        });
+        return nextDrafts;
+      });
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "加载线索失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadData(1, filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function applyFilters() {
+    setPage(1);
+    await loadData(1, filters);
+  }
+
+  async function resetFilters() {
+    const nextFilters: LeadQueryParams = {
+      lead_level: "",
+      demand_type: "",
+      platform: "",
+      status: "",
+      source_type: "",
+      keyword: "",
+    };
+    setFilters(nextFilters);
+    setPage(1);
+    await loadData(1, nextFilters);
+  }
+
+  async function handlePrevPage() {
+    const nextPage = Math.max(1, page - 1);
+    await loadData(nextPage, filters);
+  }
+
+  async function handleNextPage() {
+    const nextPage = page + 1;
+    await loadData(nextPage, filters);
+  }
+
+  async function handleViewEvidence(lead: Lead) {
+    setDetailLead(lead);
+    setDetailOpen(true);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
+
+  async function handleUpdateStatus(lead: Lead) {
+    const nextStatus = draftStatuses[lead.id] ?? lead.status;
+    if (nextStatus === lead.status) {
+      return;
+    }
+
+    setBusyId(lead.id);
+    setError(null);
+
+    try {
+      await updateLeadStatus(lead.id, nextStatus);
+      await loadData(page, filters);
+      if (detailLead?.id === lead.id) {
+        setDetailLead({ ...lead, status: nextStatus });
+      }
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "更新线索状态失败");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleExportCsv() {
+    setExporting(true);
+    setError(null);
+
+    try {
+      const blob = await exportLeadsCsv({
+        lead_level: filters.lead_level || undefined,
+        demand_type: filters.demand_type || undefined,
+        platform: filters.platform || undefined,
+        status: filters.status || undefined,
+        source_type: filters.source_type || undefined,
+        keyword: filters.keyword || undefined,
+      });
+      downloadBlob(blob, "leads.csv");
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "导出 CSV 失败");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const evidenceSections = buildEvidenceSections(detailLead?.evidence);
+
+  return (
+    <main className="page-shell">
+      <header className="page-header">
+        <div>
+          <p className="page-eyebrow">线索池</p>
+          <h1>智获客雷达</h1>
+          <p className="page-description">查看 A/B/C/D 级线索，核对证据链，修改状态并导出 CSV。</p>
+        </div>
+      </header>
+
+      <section className="stats-grid">
+        <div className="stat-card"><span>全部线索</span><strong>{statTotals.all}</strong></div>
+        <div className="stat-card"><span>A 级线索</span><strong>{statTotals.A}</strong></div>
+        <div className="stat-card"><span>B 级线索</span><strong>{statTotals.B}</strong></div>
+        <div className="stat-card"><span>C 级线索</span><strong>{statTotals.C}</strong></div>
+        <div className="stat-card"><span>D 级线索</span><strong>{statTotals.D}</strong></div>
+      </section>
+
+      <section className="card">
+        <div className="card-header card-header-row">
+          <div>
+            <h2>筛选条件</h2>
+            <p>按线索等级、需求类型、平台和状态筛选。</p>
+          </div>
+          <div className="action-row">
+            <button type="button" onClick={() => void applyFilters()} disabled={loading}>查询</button>
+            <button type="button" onClick={() => void resetFilters()} disabled={loading}>重置</button>
+            <button type="button" onClick={() => void handleExportCsv()} disabled={exporting}>
+              {exporting ? "导出中..." : "导出 CSV"}
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-grid">
+          <label>
+            <span>线索等级</span>
+            <select value={filters.lead_level ?? ""} onChange={(event) => setFilters((current) => ({ ...current, lead_level: event.target.value }))}>
+              {LEAD_LEVEL_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "全部"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>需求类型</span>
+            <input value={filters.demand_type ?? ""} onChange={(event) => setFilters((current) => ({ ...current, demand_type: event.target.value }))} placeholder="例如：借款需求" />
+          </label>
+          <label>
+            <span>平台</span>
+            <select value={filters.platform ?? ""} onChange={(event) => setFilters((current) => ({ ...current, platform: event.target.value }))}>
+              {PLATFORM_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "全部"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>状态</span>
+            <select value={filters.status ?? ""} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "全部"}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header card-header-row">
+          <div>
+            <h2>线索列表</h2>
+            <p>当前页共 {items.length} 条，总计 {total} 条。</p>
+          </div>
+          <div className="action-row">
+            <button type="button" onClick={() => void loadData(page, filters)} disabled={loading}>刷新列表</button>
+            <button type="button" onClick={() => void handlePrevPage()} disabled={loading || page <= 1}>上一页</button>
+            <button type="button" onClick={() => void handleNextPage()} disabled={loading || items.length < pageSize}>下一页</button>
+          </div>
+        </div>
+
+        {loading ? <p className="state-text">加载中...</p> : null}
+        {error ? (
+          <div className="state-panel state-error">
+            <p>{error}</p>
+            <button type="button" onClick={() => void loadData(page, filters)}>重试</button>
+          </div>
+        ) : null}
+        {!loading && !error && !hasItems ? (
+          <div className="state-panel state-empty">
+            <p>暂无线索。</p>
+          </div>
+        ) : null}
+
+        {!loading && !error && hasItems ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>线索等级</th>
+                  <th>线索评分</th>
+                  <th>需求类型</th>
+                  <th>评论内容</th>
+                  <th>识别理由</th>
+                  <th>跟进话术</th>
+                  <th>风险等级</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((lead) => (
+                  <tr key={lead.id}>
+                    <td><span className={`lead-level level-${lead.lead_level}`}>{lead.lead_level}</span></td>
+                    <td>{lead.lead_score}</td>
+                    <td>{lead.demand_type || "-"}</td>
+                    <td className="cell-break">{lead.content || "-"}</td>
+                    <td className="cell-break">{lead.reason || "-"}</td>
+                    <td className="cell-break">{lead.follow_up_script || "-"}</td>
+                    <td>{lead.risk_level || "-"}</td>
+                    <td>
+                      <StatusBadge status={lead.status} />
+                    </td>
+                    <td>
+                      <div className="lead-actions">
+                        <button type="button" onClick={() => void handleViewEvidence(lead)}>证据链</button>
+                        <select value={draftStatuses[lead.id] ?? lead.status} onChange={(event) => setDraftStatuses((current) => ({ ...current, [lead.id]: event.target.value }))}>
+                          {Object.keys(LEAD_STATUS_LABELS).map((status) => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                        <button type="button" onClick={() => void handleUpdateStatus(lead)} disabled={busyId === lead.id}>
+                          {busyId === lead.id ? "保存中..." : "保存"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      {detailOpen && detailLead ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setDetailOpen(false)}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-label="线索证据链" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>证据链</h3>
+                <p>线索 ID：{detailLead.id}，等级：{detailLead.lead_level}</p>
+              </div>
+              <button type="button" onClick={() => setDetailOpen(false)}>关闭</button>
+            </div>
+
+            {detailLoading ? <p className="state-text">加载中...</p> : null}
+            {detailError ? <p className="inline-error">{detailError}</p> : null}
+
+            {!detailLoading && !detailError ? (
+              <div className="modal-body">
+                <div className="detail-grid compact">
+                  <div><span>评论内容</span><strong>{detailLead.content || "-"}</strong></div>
+                  <div><span>识别理由</span><strong>{detailLead.reason || "-"}</strong></div>
+                  <div><span>跟进话术</span><strong>{detailLead.follow_up_script || "-"}</strong></div>
+                  <div><span>风险等级</span><strong>{detailLead.risk_level || "-"}</strong></div>
+                </div>
+
+                <div className="evidence-list">
+                  {evidenceSections.length > 0 ? evidenceSections.map((section) => (
+                    <section key={section.title} className="evidence-block">
+                      <h4>{section.title}</h4>
+                      <pre>{section.value}</pre>
+                    </section>
+                  )) : (
+                    <div className="state-panel state-empty">
+                      <p>暂无证据链数据。</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
+}

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.collectors import router as collectors_router
 from app.api.routes.comments import router as comments_router
 from app.api.routes.content_pools import router as content_pools_router
 from app.api.routes.crawl_tasks import router as crawl_tasks_router
@@ -13,7 +14,16 @@ from app.api.routes.posts import router as posts_router
 app = FastAPI(title="Loan Radar Backend")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:4173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:4173",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,6 +36,7 @@ app.include_router(pending_competitors_router)
 app.include_router(content_pools_router)
 app.include_router(crawl_tasks_router)
 app.include_router(monitor_sources_router)
+app.include_router(collectors_router)
 
 
 @app.get("/health")

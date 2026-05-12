@@ -36,6 +36,7 @@ class CollectedComment(BaseModel):
 class CollectorResult(BaseModel):
     posts: list[CollectedPost] = Field(default_factory=list)
     comments: list[CollectedComment] = Field(default_factory=list)
+    metadata: dict[str, Any] | None = None
 
 
 class BaseCollector(ABC):

@@ -4,6 +4,7 @@ from app.collectors.base import (
     CollectedPost,
     CollectorResult,
 )
+from app.collectors.config import CollectorConfig
 from app.collectors.factory import CollectorFactory
 from app.collectors.mock_collector import MockCollector
 from app.collectors.playwright_collector import PlaywrightCollector
@@ -12,6 +13,7 @@ __all__ = [
     "BaseCollector",
     "CollectedComment",
     "CollectedPost",
+    "CollectorConfig",
     "CollectorFactory",
     "CollectorResult",
     "MockCollector",

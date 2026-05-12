@@ -1,10 +1,13 @@
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text, UniqueConstraint, func
 
 from app.core.database import Base
 
 
 class Comment(Base):
     __tablename__ = "comments"
+    __table_args__ = (
+        UniqueConstraint("platform", "comment_id", name="uq_comments_platform_comment_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     platform = Column(String(50), nullable=False, index=True)
