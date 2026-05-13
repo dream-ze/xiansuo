@@ -108,7 +108,9 @@ class CollectorFactory:
                 "supports": ["keyword", "competitor_account", "manual_post"],
                 "config": {
                     "collector_type": "xhs",
-                    "cookies": "required",
+                    "xhs_provider_driver": "cdp",
+                    "xhs_cdp_endpoint": "http://127.0.0.1:9222",
+                    "cookies": "legacy_pc_or_spider_only",
                     "entry_url": "https://www.xiaohongshu.com/",
                     "selectors": {"note_container": "div[class*='feed-item']"},
                     "max_posts": 20,

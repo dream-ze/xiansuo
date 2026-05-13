@@ -66,7 +66,8 @@ export default function CrawlTasksPage() {
       setTasks(
         taskResult.items.map((task) => ({
           ...task,
-          source_name: sourceNameMap.get(task.source_id)?.name ?? `监控源 #${task.source_id}`,
+          source_name:
+            task.source_id == null ? "collection_tasks_api" : sourceNameMap.get(task.source_id)?.name ?? `监控源 #${task.source_id}`,
         })),
       );
     } catch (loadError) {
@@ -88,7 +89,9 @@ export default function CrawlTasksPage() {
 
     try {
       const task = await getCrawlTask(taskId);
-      const sourceName = tasks.find((item) => item.id === taskId)?.source_name ?? `监控源 #${task.source_id}`;
+      const sourceName =
+        tasks.find((item) => item.id === taskId)?.source_name ??
+        (task.source_id == null ? "collection_tasks_api" : `监控源 #${task.source_id}`);
       setSelectedTask({ ...task, source_name: sourceName });
     } catch (viewError) {
       setDetailError(viewError instanceof Error ? viewError.message : "加载任务详情失败");

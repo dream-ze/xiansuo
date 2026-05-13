@@ -26,6 +26,7 @@ class TaskSummary:
     comment_count: int
     lead_count: int
     error_message: str | None
+    discovered_competitor_count: int
 
 
 class ApiClient:
@@ -87,15 +88,18 @@ class RealCollectionSmoke:
     def __init__(self) -> None:
         self.base_url = os.getenv("BASE_URL", "http://127.0.0.1:8000").rstrip("/")
         self.keyword = os.getenv("XHS_TEST_KEYWORD", "征信花了")
-        self.account_url = os.getenv("XHS_TEST_ACCOUNT_URL", "").strip()
         self.post_url = os.getenv("XHS_TEST_POST_URL", "").strip()
         self.driver = (os.getenv("XHS_PROVIDER_DRIVER") or "pc").strip().lower()
         self.spider_path = (os.getenv("XHS_SPIDER_PATH") or "").strip()
         self.client = ApiClient(self.base_url)
 
     def run(self) -> None:
-        if not os.getenv("XHS_COOKIES", "").strip():
-            raise SmokeError("XHS_COOKIES 缺失，请先在环境变量中设置后再运行")
+        if self.driver in {"pc", "spider"} and not os.getenv("XHS_COOKIES", "").strip():
+            raise SmokeError("XHS_COOKIES 缺失，pc/spider driver 需要先在环境变量中设置")
+        if self.driver not in {"pc", "spider", "cdp", "auto"}:
+            raise SmokeError(f"不支持的 XHS_PROVIDER_DRIVER: {self.driver}")
+        if not self.post_url:
+            raise SmokeError("XHS_TEST_POST_URL 缺失，真实采集 smoke 需要同时验证 keyword 和 post_url")
 
         self._check_health()
 
@@ -103,18 +107,23 @@ class RealCollectionSmoke:
         if self.driver in {"spider", "auto"}:
             print(f"spider_path={'configured' if self.spider_path else 'missing'}")
 
-        summaries: list[TaskSummary] = []
-        summaries.append(self._run_single_task(source_type="keyword", source_value=self.keyword, limit_count=5))
+        summaries: list[TaskSummary] = [
+            self._run_single_task(source_type="keyword", source_value=self.keyword, limit_count=5),
+            self._run_single_task(source_type="post_url", source_value=self.post_url, limit_count=1),
+        ]
 
-        if self.account_url:
-            summaries.append(self._run_single_task(source_type="account", source_value=self.account_url, limit_count=5))
-
-        if self.post_url:
-            summaries.append(self._run_single_task(source_type="post_url", source_value=self.post_url, limit_count=1))
+        for summary in summaries:
+            self._assert_task_run_result(summary)
 
         posts_total = self._fetch_total("/api/posts")
         comments_total = self._fetch_total("/api/comments")
         leads_total = self._fetch_total("/api/leads")
+        daily_report = self._generate_daily_report()
+        csv_size = self._export_leads_csv()
+
+        successful_runs = [summary for summary in summaries if summary.status == "success"]
+        if successful_runs and posts_total <= 0:
+            raise SmokeError("任务状态 success 但 posts 总量未增加，入库验收失败")
 
         print("\n=== Real Collection Smoke Result ===")
         for summary in summaries:
@@ -129,6 +138,7 @@ class RealCollectionSmoke:
                         f"post_count={summary.post_count}",
                         f"comment_count={summary.comment_count}",
                         f"lead_count={summary.lead_count}",
+                        f"discovered_competitor_count={summary.discovered_competitor_count}",
                         f"error_message={summary.error_message or ''}",
                         "---",
                     ]
@@ -138,6 +148,9 @@ class RealCollectionSmoke:
         print(f"posts_total={posts_total}")
         print(f"comments_total={comments_total}")
         print(f"leads_total={leads_total}")
+        print(f"daily_report_date={daily_report.get('report_date')}")
+        print(f"daily_report_id={daily_report.get('id')}")
+        print(f"leads_csv_bytes={csv_size}")
 
     def _check_health(self) -> None:
         status, raw = self.client.request_raw("GET", "/health")
@@ -184,7 +197,34 @@ class RealCollectionSmoke:
             comment_count=int(detail.get("comment_count") or 0),
             lead_count=int(detail.get("lead_count") or 0),
             error_message=detail.get("error_message"),
+            discovered_competitor_count=int(detail.get("discovered_competitor_count") or 0),
         )
+
+    def _assert_task_run_result(self, summary: TaskSummary) -> None:
+        if summary.status not in {"success", "failed"}:
+            raise SmokeError(f"task_id={summary.task_id} 状态异常: {summary.status}")
+        if summary.status == "failed" and not summary.error_message:
+            raise SmokeError(f"task_id={summary.task_id} 失败但缺少 error_message")
+        if summary.status == "success" and summary.post_count <= 0 and summary.collected_posts <= 0:
+            raise SmokeError(f"task_id={summary.task_id} success 但没有采集到帖子")
+
+    def _generate_daily_report(self) -> dict[str, Any]:
+        response = self.client.request_json("POST", "/api/daily-reports/generate")
+        data = response.get("data") or {}
+        if data.get("report_date") is None:
+            raise SmokeError(f"daily report 生成失败: {data}")
+        return data
+
+    def _export_leads_csv(self) -> int:
+        status, raw = self.client.request_raw("GET", "/api/leads/export")
+        if status != 200:
+            raise SmokeError(f"leads csv 导出失败: HTTP {status}")
+        if not raw:
+            raise SmokeError("leads csv 导出结果为空")
+        decoded = raw.decode("utf-8-sig", errors="replace")
+        if "线索等级" not in decoded:
+            raise SmokeError("leads csv 缺少表头字段: 线索等级")
+        return len(raw)
 
     def _fetch_total(self, path: str) -> int:
         response = self.client.request_json("GET", path, params={"page": 1, "page_size": 1})

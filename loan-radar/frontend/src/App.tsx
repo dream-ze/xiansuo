@@ -10,6 +10,7 @@ export default function App() {
           <Link to="/">仪表板</Link>
           <Link to="/monitor-sources">监听源</Link>
           <Link to="/crawl-tasks">爬虫任务</Link>
+          <Link to="/collection-tasks">真实采集任务</Link>
           <Link to="/posts">帖子</Link>
           <Link to="/comments">评论</Link>
           <Link to="/leads">线索</Link>

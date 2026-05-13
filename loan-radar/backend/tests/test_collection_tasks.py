@@ -40,6 +40,7 @@ def db_cleanup():
 
 
 class FakeXhsProvider:
+    keyword_called = False
     account_called = False
     post_url_called = False
 
@@ -50,6 +51,7 @@ class FakeXhsProvider:
         return None
 
     def collect_by_keyword(self, keyword: str, limit: int) -> ProviderCollectionResult:
+        self.__class__.keyword_called = True
         assert keyword == "征信花了"
         assert limit == 2
         return ProviderCollectionResult(
@@ -238,3 +240,40 @@ def test_collection_task_missing_cookie_marks_failed(client, db_cleanup, monkeyp
     assert payload["status"] == "failed"
     assert payload.get("error_message")
     assert "xhs_cookies" in payload["error_message"].lower()
+
+
+def test_monitor_source_crawl_xhs_keyword_routes_to_provider(client, db_cleanup, monkeypatch):
+    FakeXhsProvider.keyword_called = False
+    monkeypatch.setattr("app.services.crawl_pipeline_service.XhsProvider", FakeXhsProvider)
+
+    source_resp = client.post(
+        "/api/monitor-sources",
+        json={
+            "source_type": "keyword",
+            "platform": "xhs",
+            "name": "关键词真实采集",
+            "value": "征信花了",
+            "config": {
+                "collector_type": "xhs",
+                "cookies": "session=masked",
+                "max_posts": 2,
+            },
+            "enabled": True,
+        },
+    )
+    assert source_resp.status_code == 200
+    source_id = source_resp.json()["data"]["id"]
+
+    crawl_resp = client.post(f"/api/monitor-sources/{source_id}/crawl")
+    assert crawl_resp.status_code == 200
+    payload = crawl_resp.json()["data"]
+
+    assert payload["status"] == "success"
+    assert payload["post_count"] == 1
+    assert payload["comment_count"] == 1
+    assert payload["lead_count"] == 1
+    assert FakeXhsProvider.keyword_called is True
+
+    session = db_cleanup
+    assert session.query(Post).filter(Post.source_id == source_id).count() >= 1
+    assert session.query(Comment).count() >= 1

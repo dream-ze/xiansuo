@@ -14,7 +14,7 @@
 2. 支持 `manual_post + playwright`：用户粘贴公开帖子链接，系统尝试采集帖子和评论。
 3. 支持 `external_api`：通过外部采集 API 接入合规数据源。
 4. 支持 `generic_web`：通过通用选择器进行网页采集。
-5. 支持 `xhs` 初版采集器（需手动提供 cookies，仅用于小规模开发测试）。
+5. 支持 `xhs` 初版采集器，优先复用本机 Chrome/Edge 的 CDP 登录态；`cookies` 仅用于 `pc/spider` 旧驱动的小规模开发测试。
 6. 前端监控源页面可配置 `collector_type`（按 `source_type` 动态限制可选项）。
 7. 真实平台采集仍需小规模、合规、人工测试。
 8. 不做登录绕过、验证码绕过、账号池、代理池、签名逆向。
@@ -64,6 +64,18 @@ npm run dev
 
 ```bash
 python -m playwright install chromium
+```
+
+如需测试小红书 CDP 真实采集：
+
+```bash
+# 先手动启动已登录的 Chrome/Edge，并开放远程调试端口，例如 9222
+# chrome.exe --remote-debugging-port=9222 --user-data-dir=<独立目录>
+# 然后设置：
+# XHS_PROVIDER_DRIVER=cdp
+# XHS_CDP_ENDPOINT=http://127.0.0.1:9222
+# XHS_TEST_POST_URL=<小红书笔记链接>
+python backend/scripts/real_collection_smoke.py
 ```
 
 ## 步骤 23：后端全链路 Smoke Test

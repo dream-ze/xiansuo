@@ -124,10 +124,18 @@ class TestCollectorConfig:
 
     def test_collector_config_validate_xhs(self):
         """CollectorConfig 应验证 xhs 配置"""
-        # 缺少 cookies
+        # 默认 driver 为 pc，缺少 cookies 仍应失败
         config = CollectorConfig(collector_type="xhs")
         is_valid, msg = config.validate_for_collector_type()
         assert not is_valid
+
+        # cdp driver 不应强制要求 cookies
+        config = CollectorConfig(
+            collector_type="xhs",
+            xhs_provider_driver="cdp",
+        )
+        is_valid, msg = config.validate_for_collector_type()
+        assert is_valid
 
         # 有效配置
         config = CollectorConfig(

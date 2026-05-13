@@ -122,7 +122,9 @@ class TestXhsCollectorFactory:
         xhs_cap = capabilities["xhs"]
         assert "config" in xhs_cap
         assert xhs_cap["config"]["collector_type"] == "xhs"
-        assert xhs_cap["config"]["cookies"] == "required"
+        assert xhs_cap["config"]["xhs_provider_driver"] == "cdp"
+        assert xhs_cap["config"]["xhs_cdp_endpoint"] == "http://127.0.0.1:9222"
+        assert xhs_cap["config"]["cookies"] == "legacy_pc_or_spider_only"
 
 
 class TestXhsCollectorConfig:
@@ -200,6 +202,18 @@ class TestXhsCollectorError:
         assert not is_valid
         assert "cookies" in msg
 
+    def test_config_validation_cdp_driver_without_cookies(self):
+        """测试：cdp driver 不要求 cookies"""
+        config = {
+            "collector_type": "xhs",
+            "xhs_provider_driver": "cdp",
+            "cookies": None,
+        }
+        config_obj = CollectorConfig.parse(config)
+        is_valid, msg = config_obj.validate_for_collector_type()
+        assert is_valid
+        assert msg == ""
+
 
 class TestXhsPageParserDefaults:
     """XhsPageParser 默认值测试"""
@@ -261,7 +275,7 @@ class TestXhsCollectorIntegration:
         capabilities = CollectorFactory.get_supported_collectors()
         assert capabilities["xhs"]["status"] == "ready"
         assert capabilities["generic_web"]["status"] == "ready"
-        assert capabilities["xhs"]["config"]["cookies"] == "required"
+        assert capabilities["xhs"]["config"]["xhs_provider_driver"] == "cdp"
 
     def test_factory_rejects_unknown_collector_type(self):
         """测试：Factory 拒绝未知采集器类型"""

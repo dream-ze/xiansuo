@@ -62,6 +62,28 @@ class FakeSpiderAdapter:
         return [{"id": "spider-comment-1", "note_id": "spider-detail-1", "content": "spider-comment"}]
 
 
+class FakeCdpClient:
+    def __init__(self) -> None:
+        self.keyword_called = False
+        self.detail_called = False
+        self.comments_called = False
+
+    def search_notes(self, keyword: str, limit: int):
+        self.keyword_called = True
+        return [{"id": "cdp-note-1", "note_card": {"title": keyword, "desc": "cdp"}}]
+
+    def get_note_detail(self, post_url: str):
+        self.detail_called = True
+        return {"id": "cdp-detail-1", "url": post_url, "note_card": {"title": "cdp-detail", "desc": "cdp"}}
+
+    def get_note_comments(self, post_id: str, post_url: str, xsec_token: str, limit: int):
+        self.comments_called = True
+        return [{"id": "cdp-comment-1", "note_id": post_id, "content": "cdp-comment"}]
+
+    def close(self):
+        return None
+
+
 def test_xhs_provider_pc_driver_uses_pc_client(monkeypatch):
     monkeypatch.setenv("XHS_COOKIES", "a1=test-cookie")
     monkeypatch.setenv("XHS_PROVIDER_DRIVER", "pc")
@@ -84,6 +106,85 @@ def test_xhs_provider_pc_driver_uses_pc_client(monkeypatch):
     assert client.keyword_called is True
     assert client.detail_called is True
     assert client.comments_called is True
+
+
+def test_xhs_provider_cdp_driver_does_not_require_cookies(monkeypatch):
+    monkeypatch.delenv("XHS_COOKIES", raising=False)
+    monkeypatch.setenv("XHS_PROVIDER_DRIVER", "cdp")
+
+    cdp_client = FakeCdpClient()
+    provider = XhsProvider(cdp_client=cdp_client)
+
+    result = provider.collect_by_keyword("征信花了", 1)
+
+    assert len(result.posts) == 1
+    assert result.posts[0].post_id == "cdp-note-1"
+    assert cdp_client.keyword_called is True
+
+
+def test_xhs_provider_cdp_driver_uses_cdp_client(monkeypatch):
+    monkeypatch.delenv("XHS_COOKIES", raising=False)
+    monkeypatch.setenv("XHS_PROVIDER_DRIVER", "cdp")
+
+    cdp_client = FakeCdpClient()
+    provider = XhsProvider(cdp_client=cdp_client)
+
+    posts_result = provider.collect_by_keyword("征信花了", 1)
+    detail_result = provider.collect_by_post_url("https://www.xiaohongshu.com/explore/cdp-detail-1")
+    comments = provider.collect_comments(
+        post_id="cdp-detail-1",
+        post_url="https://www.xiaohongshu.com/explore/cdp-detail-1",
+        xsec_token="",
+    )
+
+    assert len(posts_result.posts) == 1
+    assert len(detail_result.posts) == 1
+    assert len(comments) == 1
+    assert cdp_client.keyword_called is True
+    assert cdp_client.detail_called is True
+    assert cdp_client.comments_called is True
+
+
+class FailingCdpClient(FakeCdpClient):
+    def search_notes(self, keyword: str, limit: int):
+        raise CollectionRequestError("cdp connect failed token=secret web_session=secret")
+
+
+def test_xhs_provider_cdp_failure_records_sanitized_request_error(monkeypatch):
+    monkeypatch.delenv("XHS_COOKIES", raising=False)
+    monkeypatch.setenv("XHS_PROVIDER_DRIVER", "cdp")
+
+    recorder = DriverMetricsRecorder()
+    provider = XhsProvider(cdp_client=FailingCdpClient(), metrics_recorder=recorder)
+
+    with pytest.raises(CollectionRequestError) as exc:
+        provider.collect_by_keyword("征信花了", 1)
+
+    assert "secret" not in str(exc.value)
+    snapshot = recorder.snapshot()
+    assert snapshot["cdp"]["keyword_search"]["failed"] == 1
+    assert snapshot["cdp"]["keyword_search"]["failure_types"]["P2.request"] == 1
+
+
+def test_xhs_provider_auto_driver_falls_back_from_cdp_to_pc(monkeypatch):
+    monkeypatch.setenv("XHS_COOKIES", "a1=test-cookie")
+    monkeypatch.setenv("XHS_PROVIDER_DRIVER", "auto")
+
+    client = FakePcClient()
+    recorder = DriverMetricsRecorder()
+    provider = XhsProvider(
+        client=client,
+        cdp_client=FailingCdpClient(),
+        metrics_recorder=recorder,
+    )
+
+    result = provider.collect_by_keyword("征信花了", 1)
+
+    assert len(result.posts) == 1
+    assert client.keyword_called is True
+    snapshot = recorder.snapshot()
+    assert snapshot["cdp"]["keyword_search"]["failed"] == 1
+    assert snapshot["pc"]["keyword_search"]["success"] == 1
 
 
 def test_xhs_provider_spider_driver_uses_spider_adapter(monkeypatch):

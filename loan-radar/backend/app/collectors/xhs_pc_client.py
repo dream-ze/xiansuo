@@ -15,9 +15,17 @@ class XhsPcClient:
         self,
         base_url: str = "https://edith.xiaohongshu.com",
         timeout: float = 20.0,
+        signer: Any | None = None,
     ) -> None:
         cookies = (os.getenv("XHS_COOKIES") or "").strip()
-        if not cookies:
+
+        self._signer = signer
+        self._use_signer = signer is not None
+
+        if self._use_signer:
+            cookies = signer.get_cookies_string() or cookies
+
+        if not cookies and not self._use_signer:
             raise CollectionAuthError("XHS_COOKIES is required for real xhs collection")
 
         self._client = httpx.Client(
@@ -38,24 +46,41 @@ class XhsPcClient:
     def close(self) -> None:
         self._client.close()
 
+    def _sign_request(self, path: str, params: dict[str, Any] | None = None, json_body: dict[str, Any] | None = None) -> dict[str, str]:
+        if not self._signer:
+            return {}
+
+        full_url = f"https://edith.xiaohongshu.com{path}"
+        sign_payload = json_body if json_body else (params or {})
+
+        try:
+            sign_headers = self._signer.sign(full_url, sign_payload)
+            if sign_headers:
+                self._client.headers.update(sign_headers)
+            return sign_headers
+        except Exception:
+            return {}
+
     def search_notes(self, keyword: str, limit: int) -> list[dict[str, Any]]:
         page = 1
         items: list[dict[str, Any]] = []
         bounded_limit = max(1, limit)
         while len(items) < bounded_limit:
+            json_body = {
+                "keyword": keyword,
+                "page": page,
+                "page_size": min(20, max(1, bounded_limit - len(items))),
+                "search_id": uuid4().hex,
+                "sort": "general",
+                "note_type": 0,
+                "ext_flags": [],
+                "filters": [],
+            }
+            self._sign_request("/api/sns/web/v1/search/notes", json_body=json_body)
             response = self._request_json(
                 method="POST",
                 path="/api/sns/web/v1/search/notes",
-                json={
-                    "keyword": keyword,
-                    "page": page,
-                    "page_size": min(20, max(1, bounded_limit - len(items))),
-                    "search_id": uuid4().hex,
-                    "sort": "general",
-                    "note_type": 0,
-                    "ext_flags": [],
-                    "filters": [],
-                },
+                json=json_body,
             )
             batch = response.get("data", {}).get("items", [])
             for item in batch:
@@ -73,16 +98,18 @@ class XhsPcClient:
 
     def get_note_detail(self, post_url: str) -> dict[str, Any]:
         note_id, query = self._parse_note_url(post_url)
+        json_body = {
+            "source_note_id": note_id,
+            "image_formats": ["jpg", "webp", "avif"],
+            "extra": {"need_body_topic": "1"},
+            "xsec_token": query.get("xsec_token", [""])[0],
+            "xsec_source": query.get("xsec_source", ["pc_search"])[0],
+        }
+        self._sign_request("/api/sns/web/v1/feed", json_body=json_body)
         response = self._request_json(
             method="POST",
             path="/api/sns/web/v1/feed",
-            json={
-                "source_note_id": note_id,
-                "image_formats": ["jpg", "webp", "avif"],
-                "extra": {"need_body_topic": "1"},
-                "xsec_token": query.get("xsec_token", [""])[0],
-                "xsec_source": query.get("xsec_source", ["pc_search"])[0],
-            },
+            json=json_body,
         )
         items = response.get("data", {}).get("items", [])
         if not items:
@@ -99,17 +126,19 @@ class XhsPcClient:
         bounded_limit = max(1, limit)
 
         while len(items) < bounded_limit:
+            params = {
+                "num": min(30, max(1, bounded_limit - len(items))),
+                "cursor": cursor,
+                "user_id": user_id,
+                "image_formats": "jpg,webp,avif",
+                "xsec_token": query.get("xsec_token", [""])[0],
+                "xsec_source": query.get("xsec_source", ["pc_search"])[0],
+            }
+            self._sign_request("/api/sns/web/v1/user_posted", params=params)
             response = self._request_json(
                 method="GET",
                 path="/api/sns/web/v1/user_posted",
-                params={
-                    "num": min(30, max(1, bounded_limit - len(items))),
-                    "cursor": cursor,
-                    "user_id": user_id,
-                    "image_formats": "jpg,webp,avif",
-                    "xsec_token": query.get("xsec_token", [""])[0],
-                    "xsec_source": query.get("xsec_source", ["pc_search"])[0],
-                },
+                params=params,
             )
             notes = response.get("data", {}).get("notes", [])
             for note in notes:
@@ -137,16 +166,18 @@ class XhsPcClient:
         bounded_limit = max(1, limit)
 
         while len(results) < bounded_limit:
+            params = {
+                "note_id": post_id,
+                "cursor": cursor,
+                "top_comment_id": "",
+                "image_formats": "jpg,webp,avif",
+                "xsec_token": token,
+            }
+            self._sign_request("/api/sns/web/v2/comment/page", params=params)
             response = self._request_json(
                 method="GET",
                 path="/api/sns/web/v2/comment/page",
-                params={
-                    "note_id": post_id,
-                    "cursor": cursor,
-                    "top_comment_id": "",
-                    "image_formats": "jpg,webp,avif",
-                    "xsec_token": token,
-                },
+                params=params,
             )
             comments = response.get("data", {}).get("comments", [])
             for raw_comment in comments:

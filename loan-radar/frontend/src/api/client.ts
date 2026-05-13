@@ -54,19 +54,30 @@ export type CollectorCapabilitiesResponse = {
 
 export type CrawlTask = {
   id: number;
-  source_id: number;
+  source_id: number | null;
   source_type: string;
+  source_value?: string | null;
   platform: string;
   status: string;
+  limit_count?: number;
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
   post_count: number;
   comment_count: number;
+  collected_posts?: number;
+  collected_comments?: number;
   lead_count: number;
   discovered_competitor_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type CollectionTaskCreatePayload = {
+  platform: "xhs";
+  source_type: "keyword" | "account" | "post_url";
+  source_value: string;
+  limit_count: number;
 };
 
 export type CrawlTaskListResponse = {
@@ -336,6 +347,39 @@ export function getCrawlTasks() {
   return requestJson<CrawlTaskListResponse>("/api/crawl-tasks");
 }
 
+export function getCollectionTasks(params: {
+  status?: string;
+  source_type?: "keyword" | "account" | "post_url";
+  page?: number;
+  page_size?: number;
+} = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      searchParams.set(key, String(value));
+    }
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrawlTaskListResponse>(`/api/collection/tasks${queryString ? `?${queryString}` : ""}`);
+}
+
+export function getCollectionTask(id: number) {
+  return requestJson<CrawlTask>(`/api/collection/tasks/${id}`);
+}
+
+export function createCollectionTask(payload: CollectionTaskCreatePayload) {
+  return requestJson<CrawlTask>("/api/collection/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function runCollectionTask(id: number) {
+  return requestJson<CrawlTask>(`/api/collection/tasks/${id}/run`, {
+    method: "POST",
+  });
+}
+
 export function getCrawlTask(id: number) {
   return requestJson<CrawlTask>(`/api/crawl-tasks/${id}`);
 }
@@ -427,6 +471,53 @@ export async function exportLeadsCsv(params: LeadQueryParams = {}) {
     throw new Error(`导出失败: ${response.status}`);
   }
   return response.blob();
+}
+
+export type XhsAuthStatus = {
+  started: boolean;
+  logged_in: boolean;
+  sign_available: boolean;
+  headless: boolean;
+  state_dir: string;
+};
+
+export type XhsLoginResponse = {
+  logged_in: boolean;
+  qr_code?: string;
+  qr_type?: string;
+  message?: string;
+};
+
+export function getXhsAuthStatus() {
+  return requestJson<XhsAuthStatus>("/api/xhs-auth/status");
+}
+
+export function startXhsLogin(headless: boolean = true) {
+  return requestJson<XhsLoginResponse>(`/api/xhs-auth/start-login?headless=${headless}`, {
+    method: "POST",
+  });
+}
+
+export function checkXhsLogin() {
+  return requestJson<XhsLoginResponse>("/api/xhs-auth/check-login");
+}
+
+export function refreshXhsQrcode() {
+  return requestJson<XhsLoginResponse>("/api/xhs-auth/refresh-qrcode", {
+    method: "POST",
+  });
+}
+
+export function logoutXhs() {
+  return requestJson<{ message: string }>("/api/xhs-auth/logout", {
+    method: "POST",
+  });
+}
+
+export function restartXhsBrowser(headless: boolean = true) {
+  return requestJson<XhsAuthStatus>(`/api/xhs-auth/restart?headless=${headless}`, {
+    method: "POST",
+  });
 }
 
 export function generateDailyReport(platform?: string) {

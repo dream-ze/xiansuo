@@ -44,7 +44,15 @@ class CollectorConfig(BaseModel):
     user_agent: str | None = Field(default=None, description="自定义 UA")
     xhs_provider_driver: str | None = Field(
         default=None,
-        description="XHS provider driver: pc/spider/auto（可选，默认读取环境变量）",
+        description="XHS provider driver: pc/spider/cdp/browser/auto（可选，默认读取环境变量）",
+    )
+    xhs_cdp_endpoint: str | None = Field(
+        default=None,
+        description="XHS CDP endpoint（默认 http://127.0.0.1:9222）",
+    )
+    xhs_cdp_browser_channel: str | None = Field(
+        default=None,
+        description="XHS CDP browser channel（可选，提示本机 Chrome/Edge 类型）",
     )
     xhs_fallback_to_pc: bool | None = Field(
         default=None,
@@ -97,7 +105,13 @@ class CollectorConfig(BaseModel):
                 return False, "external_api requires external_api config"
             if "endpoint" not in self.external_api:
                 return False, "external_api requires endpoint in config"
-        elif self.collector_type in ["xhs", "douyin", "zhihu"]:
+        elif self.collector_type == "xhs":
+            driver = (self.xhs_provider_driver or "pc").strip().lower()
+            if driver not in {"pc", "spider", "cdp", "browser", "auto"}:
+                return False, f"xhs_provider_driver must be one of pc/spider/cdp/browser/auto, got {self.xhs_provider_driver}"
+            if driver not in {"cdp", "auto", "browser"} and not self.cookies:
+                return False, "xhs requires cookies for pc/spider driver"
+        elif self.collector_type in ["douyin", "zhihu"]:
             if not self.cookies:
                 return False, f"{self.collector_type} requires cookies"
         return True, ""

@@ -13,3 +13,5 @@ build/
 Thumbs.db
 
 *.log
+
+.browser_state/

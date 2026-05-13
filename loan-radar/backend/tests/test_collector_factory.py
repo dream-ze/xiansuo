@@ -5,6 +5,7 @@ import pytest
 from app.collectors.factory import CollectorFactory
 from app.collectors.mock_collector import MockCollector
 from app.collectors.playwright_collector import PlaywrightCollector
+from app.collectors.config import CollectorConfig
 
 
 def test_manual_post_playwright_uses_playwright_collector():
@@ -34,4 +35,28 @@ def test_keyword_playwright_raises_error():
     
     assert "manual_post" in str(exc_info.value)
 
+
+def test_xhs_config_accepts_cdp_driver_without_cookies():
+    config = CollectorConfig.parse(
+        {
+            "collector_type": "xhs",
+            "xhs_provider_driver": "cdp",
+            "xhs_cdp_endpoint": "http://127.0.0.1:9222",
+        }
+    )
+
+    is_valid, message = config.validate_for_collector_type()
+
+    assert config.xhs_provider_driver == "cdp"
+    assert config.xhs_cdp_endpoint == "http://127.0.0.1:9222"
+    assert is_valid is True
+    assert message == ""
+
+
+def test_supported_xhs_collector_recommends_cdp_not_required_cookies():
+    xhs = CollectorFactory.get_supported_collectors()["xhs"]
+
+    assert xhs["config"]["xhs_provider_driver"] == "cdp"
+    assert xhs["config"]["xhs_cdp_endpoint"] == "http://127.0.0.1:9222"
+    assert xhs["config"]["cookies"] == "legacy_pc_or_spider_only"
 
