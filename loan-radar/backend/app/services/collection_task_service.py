@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.collectors.base import CollectionAuthError, CollectionNoDataError, CollectionRequestError
+from app.collectors.xhs_metrics import classify_provider_error
 from app.collectors.xhs_provider import XhsProvider
 from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
@@ -19,6 +20,7 @@ from app.services.crawl_task_service import get_crawl_task, mark_crawl_task_fail
 from app.services.lead_scoring_service import LeadScoringService
 
 SUPPORTED_COLLECTION_SOURCE_TYPES = {"keyword", "account", "post_url"}
+DEFAULT_COMMENT_LIMIT = 50
 
 
 def create_collection_task(db: Session, payload: CollectionTaskCreate) -> CrawlTask:
@@ -74,9 +76,6 @@ def get_collection_task(db: Session, task_id: int) -> CrawlTask | None:
 
 
 def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | None = None) -> CrawlTask:
-    if task.source_type not in SUPPORTED_COLLECTION_SOURCE_TYPES:
-        raise ValueError(f"unsupported collection task source_type: {task.source_type}")
-
     task.status = "running"
     task.started_at = datetime.now(timezone.utc)
     task.finished_at = None
@@ -90,17 +89,24 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
     db.commit()
     db.refresh(task)
 
-    own_provider = provider is None
-    provider = provider or XhsProvider()
+    own_provider = False
+    provider_instance = provider
     try:
+        if task.source_type not in SUPPORTED_COLLECTION_SOURCE_TYPES:
+            raise ValueError(f"unsupported collection task source_type: {task.source_type}")
+
+        if provider_instance is None:
+            provider_instance = XhsProvider()
+            own_provider = True
+
         source = _ensure_collection_monitor_source(db, task)
 
         if task.source_type == "keyword":
-            provider_result = provider.collect_by_keyword(task.source_value, task.limit_count)
+            provider_result = provider_instance.collect_by_keyword(task.source_value, task.limit_count)
         elif task.source_type == "account":
-            provider_result = provider.collect_by_account(task.source_value, task.limit_count)
+            provider_result = provider_instance.collect_by_account(task.source_value, task.limit_count)
         else:
-            provider_result = provider.collect_by_post_url(task.source_value)
+            provider_result = provider_instance.collect_by_post_url(task.source_value)
 
         scoring_service = LeadScoringService()
         partial_errors = list(provider_result.errors)
@@ -153,15 +159,20 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
             try:
                 raw_data = collected_post.raw_data if isinstance(collected_post.raw_data, dict) else {}
                 xsec_token = str(raw_data.get("xsec_token") or "")
-                comments = provider.collect_comments(
+                comments = provider_instance.collect_comments(
                     post_id=collected_post.post_id,
                     post_url=collected_post.post_url or task.source_value,
                     xsec_token=xsec_token,
+                    limit=DEFAULT_COMMENT_LIMIT,
                 )
             except CollectionNoDataError:
                 comments = []
             except (CollectionAuthError, CollectionRequestError, ValueError) as error:
-                partial_errors.append(f"post {collected_post.post_id} comments failed: {_sanitize_error_message(error)}")
+                classified = classify_provider_error(error)
+                partial_errors.append(
+                    f"post {collected_post.post_id} comments failed [{classified.level}:{classified.error_type}]: "
+                    f"{_sanitize_error_message(error)}"
+                )
                 comments = []
 
             total_comments_collected += len(comments)
@@ -247,13 +258,23 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
         )
     except (CollectionAuthError, CollectionNoDataError, CollectionRequestError, ValueError) as error:
         db.rollback()
-        return mark_crawl_task_failed(db, task, _sanitize_error_message(error))
+        classified = classify_provider_error(error)
+        return mark_crawl_task_failed(
+            db,
+            task,
+            f"[{classified.level}:{classified.error_type}] {_sanitize_error_message(error)}",
+        )
     except Exception as error:
         db.rollback()
-        return mark_crawl_task_failed(db, task, _sanitize_error_message(error))
+        classified = classify_provider_error(error)
+        return mark_crawl_task_failed(
+            db,
+            task,
+            f"[{classified.level}:{classified.error_type}] {_sanitize_error_message(error)}",
+        )
     finally:
-        if own_provider:
-            provider.close()
+        if own_provider and provider_instance is not None:
+            provider_instance.close()
 
 
 def _ensure_collection_monitor_source(db: Session, task: CrawlTask) -> MonitorSource:

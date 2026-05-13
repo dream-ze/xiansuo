@@ -42,6 +42,14 @@ class CollectorConfig(BaseModel):
     )
     proxies: str | None = Field(default=None, description="代理地址: http://ip:port")
     user_agent: str | None = Field(default=None, description="自定义 UA")
+    xhs_provider_driver: str | None = Field(
+        default=None,
+        description="XHS provider driver: pc/spider/auto（可选，默认读取环境变量）",
+    )
+    xhs_fallback_to_pc: bool | None = Field(
+        default=None,
+        description="XHS spider 失败时是否回退到 pc client（可选，默认读取环境变量）",
+    )
 
     class Config:
         extra = "allow"  # 允许额外字段

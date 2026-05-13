@@ -2,6 +2,29 @@
 
 本文用于验收前后端真实采集能力是否对齐，不新增大功能，只验证已实现能力。
 
+## 0.1 Spider_XHS 关键词最小闭环（新增）
+
+当前后端已支持 XHS provider 双通道驱动：
+
+1. `pc`：使用内置 `XhsPcClient`。
+2. `spider`：优先使用 Spider_XHS 适配器（需要额外依赖和路径配置）。
+3. `auto`：优先 Spider_XHS，失败后回退 `pc`。
+
+### 运行前环境变量
+
+```powershell
+$env:XHS_COOKIES = "你的登录cookie"
+$env:XHS_PROVIDER_DRIVER = "spider"   # 可选: pc / spider / auto
+$env:XHS_PROVIDER_FALLBACK_TO_PC = "true"  # spider 模式下失败时是否回退
+$env:XHS_SPIDER_PATH = "D:\\path\\to\\Spider_XHS" # Spider_XHS 仓库根目录
+```
+
+说明：
+
+1. `XHS_SPIDER_PATH` 未配置时，`spider` 模式会报错并提示路径。
+2. 敏感信息（cookie/token/session）不会写入 error_message 明文。
+3. 本阶段仅覆盖采集链路，不包含登录/发布能力。
+
 ## 1. 后端启动方式
 
 ```powershell

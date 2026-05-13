@@ -94,18 +94,21 @@ class GenericPageParser(BasePageParser):
                     title = await self._extract_text_from_element(
                         element,
                         used_selectors.get("title", "h1"),
+                        fallback_root=page,
                     )
                     
                     # 提取 content
                     content = await self._extract_text_from_element(
                         element,
                         used_selectors.get("content", "article, main"),
+                        fallback_root=page,
                     )
                     
                     # 提取 author
                     author = await self._extract_text_from_element(
                         element,
                         used_selectors.get("author", ".author"),
+                        fallback_root=page,
                     )
                     
                     # 跳过空白 post
@@ -138,6 +141,7 @@ class GenericPageParser(BasePageParser):
 
                     # 提取这个 post 的评论
                     comments = await self._extract_comments_from_element(
+                        page,
                         element,
                         post_id,
                         platform,
@@ -146,6 +150,7 @@ class GenericPageParser(BasePageParser):
                         raw_data,
                         now,
                     )
+                    post.comment_count = len(comments)
                     comments_list.extend(comments)
                     
                     if post_count >= max_posts:
@@ -172,13 +177,19 @@ class GenericPageParser(BasePageParser):
         self,
         element: Any,
         selectors_str: str,
+        fallback_root: Any | None = None,
     ) -> str | None:
         """从元素中提取文本"""
         selectors = [s.strip() for s in selectors_str.split(",")]
         
         for selector in selectors:
             try:
-                locator = element.locator(selector).first
+                if hasattr(element, "locator"):
+                    locator = element.locator(selector).first
+                elif fallback_root is not None and hasattr(fallback_root, "locator"):
+                    locator = fallback_root.locator(selector).first
+                else:
+                    continue
                 count = await locator.count()
                 if count == 0:
                     continue
@@ -193,6 +204,7 @@ class GenericPageParser(BasePageParser):
 
     async def _extract_comments_from_element(
         self,
+        page: Any,
         element: Any,
         post_id: str,
         platform: str,
@@ -209,7 +221,12 @@ class GenericPageParser(BasePageParser):
         
         for selector in selectors:
             try:
-                comment_elements = element.locator(selector)
+                if hasattr(element, "locator"):
+                    comment_elements = element.locator(selector)
+                elif hasattr(page, "locator"):
+                    comment_elements = page.locator(selector)
+                else:
+                    continue
                 count = await comment_elements.count()
                 
                 if count == 0:
