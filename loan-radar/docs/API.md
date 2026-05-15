@@ -10,7 +10,7 @@
 
 ### 2.1 基础地址
 
-- 本地开发：`http://localhost:8000`
+- 本地开发：`http://localhost:8001`
 - 健康检查：`GET /health` → `{"status": "ok"}`
 
 ### 2.2 统一响应包装
@@ -62,12 +62,15 @@
 ### 2.5 通用枚举
 
 - `source_type`：`keyword` / `competitor_account` / `manual_post` / `hot_post_rule`
-- `platform`：`xhs` / `douyin` / `zhihu` / `other`
+- `platform`：`xhs` / `douyin` / `zhihu` / `kuaishou` / `bilibili` / `weibo` / `tieba` / `other`
+
+  > 注意：创建监控源时以上 8 个平台均可通过校验，但当前 MediaCrawler 仅支持 `xhs` / `douyin` / `zhihu` 三个平台的采集。选择其他平台创建监控源会成功，但触发采集时会失败。
 - `crawl_task.status`：`pending` / `running` / `success` / `failed`
 - `lead.lead_level`：`A` / `B` / `C` / `D`
 - `lead.status`：`new` / `contacted` / `invalid` / `converted`
 - `comment.demand_type`：由评分服务输出（如 `借款需求`、`资质焦虑`、`产品咨询`、`弱意向` 等）
 - `comment.risk_level`：由评分服务输出（如 `low` / `mid` / `high`，以代码为准）
+- `collector_type`：`media_crawler`（当前唯一可用）
 
 ---
 
@@ -87,7 +90,12 @@
   "platform": "xhs",
   "name": "信用贷关键词",
   "value": "信用贷",
-  "config": null,
+  "config": {
+    "collector_type": "media_crawler",
+    "login_type": "qrcode",
+    "enable_comments": true,
+    "max_posts": 20
+  },
   "enabled": true,
   "last_crawled_at": null
 }
@@ -139,10 +147,9 @@
 
 行为：基于该监控源同步运行一次采集流水线，返回新建的 `CrawlTask`。
 
-- 默认 `config.collector_type` 为空或 `mock` 时使用 MockCollector。
-- 当 `source_type == "manual_post"` 且 `config.collector_type == "playwright"` 时，使用 PlaywrightCollector 尝试采集公开帖子链接。
-- Playwright 真实采集只支持 `http/https` URL，不支持登录、验证码、代理池或关键词批量搜索。
-- 真实采集失败不会导致后端服务崩溃；任务返回 `status="failed"`，并在 `error_message` 中写明原因。
+- 当 `config.collector_type == "media_crawler"` 时，使用 MediaCrawlerCollector 采集。
+- MediaCrawler 支持关键词搜索、指定帖子、创作者主页采集，需 MediaCrawler API 服务在线。
+- 采集失败不会导致后端服务崩溃；任务返回 `status="failed"`，并在 `error_message` 中写明原因。
 
 响应：`success_response(CrawlTaskOut)`；监控源不存在返回 404。
 
@@ -152,13 +159,36 @@
 
 响应：`success_response({"id": <删除的 id>})`；不存在返回 404。
 
+### 3.8 MediaCrawler 健康检查
+
+`GET /api/monitor-sources/media-crawler/health`
+
+行为：检查 MediaCrawler API 服务是否可用，返回支持的平台列表。
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy" | "unreachable",
+    "api_base_url": "http://127.0.0.1:8080",
+    "supported_platforms": [
+      {"value": "douyin", "label": "抖音"},
+      {"value": "xhs", "label": "小红书"},
+      {"value": "zhihu", "label": "知乎"}
+    ]
+  }
+}
+```
+
 ---
 
 ## 四、采集任务 Crawl Tasks
 
-路由前缀：`/api/crawl-tasks`
+### 4.1 采集任务列表（旧接口）
 
-### 4.1 采集任务列表
+路由前缀：`/api/crawl-tasks`
 
 `GET /api/crawl-tasks`
 
@@ -169,7 +199,7 @@
 
 响应：`success_response({items: [CrawlTaskOut], total, page, page_size})`。
 
-`CrawlTaskOut` 字段：`id, source_id, source_type, platform, status, started_at, finished_at, error_message, post_count, comment_count, lead_count, discovered_competitor_count, created_at, updated_at`。
+`CrawlTaskOut` 字段：`id, source_id, source_type, source_value, platform, status, limit_count, started_at, finished_at, error_message, post_count, comment_count, collected_posts, collected_comments, lead_count, discovered_competitor_count, created_at, updated_at`。
 
 ### 4.2 采集任务详情
 
@@ -191,6 +221,43 @@
 - 任务非 failed → 400 `"only failed crawl tasks can be rerun"`
 - 关联监控源不存在 → 404 `"monitor source not found"`
 
+### 4.4 采集任务创建与运行（新接口）
+
+路由前缀：`/api/collection/tasks`
+
+`POST /api/collection/tasks` — 创建采集任务
+
+请求体：
+
+```json
+{
+  "platform": "xhs",
+  "source_type": "keyword",
+  "source_value": "征信花了",
+  "limit_count": 20
+}
+```
+
+`source_type` 可选值：`keyword` / `account` / `post_url`（前端映射为 `keyword` / `competitor_account` / `manual_post`）。
+
+响应：`success_response(CrawlTaskOut)`。
+
+`GET /api/collection/tasks` — 列表
+
+查询参数：`status`、`source_type`、`page`、`page_size`
+
+响应：`success_response({items: [CrawlTaskOut], total, page, page_size})`。
+
+`GET /api/collection/tasks/{task_id}` — 详情
+
+响应：`success_response(CrawlTaskOut)`；不存在返回 404。
+
+`POST /api/collection/tasks/{task_id}/run` — 运行
+
+行为：使用 MediaCrawlerCollector 执行采集，自动创建关联监控源。
+
+响应：`success_response(CrawlTaskOut)`；任务不存在返回 404；已在运行返回 400。
+
 ---
 
 ## 五、帖子 Posts
@@ -207,9 +274,17 @@
 
 响应：`success_response({items: [PostOut], total, page, page_size})`。
 
-`PostOut` 字段：`id, platform, source_id, source_type, post_id, title, content, post_url, author_name, author_profile_url, like_count, comment_count, collect_count, publish_time, is_hot, raw_data, created_at, updated_at`。
+`PostOut` 字段：`id, platform, source_id, source_type, post_id, title, content, post_url, author_name, author_profile_url, like_count, comment_count, collect_count, publish_time, is_hot, lead_count, raw_data, created_at, updated_at`。
+
+- `lead_count`：该帖子关联的线索数量（由 `_enrich_post_out` 计算填充）。
 
 排序：按 `id DESC`。
+
+### 5.2 帖子详情
+
+`GET /api/posts/{post_id}`
+
+响应：`success_response(PostOut)`；不存在返回 `success_response({"success": false, ...})`。
 
 ---
 
@@ -227,7 +302,9 @@
 
 响应：`success_response({items: [CommentOut], total, page, page_size})`。
 
-`CommentOut` 字段：`id, platform, post_id, comment_id, user_name, user_profile_url, content, like_count, publish_time, is_suspected_demand, demand_type, risk_level, raw_data, created_at, updated_at`。
+`CommentOut` 字段：`id, platform, post_id, comment_id, user_name, user_profile_url, content, like_count, publish_time, is_suspected_demand, demand_type, risk_level, has_lead, raw_data, created_at, updated_at`。
+
+- `has_lead`：该评论是否已生成线索（由 `_enrich_comment_out` 计算填充）。
 
 ---
 
@@ -242,12 +319,17 @@
 查询参数：
 
 - `lead_level`、`demand_type`、`risk_level`、`platform`、`status`、`source_type`
+- `source_post_id`（可选）：按来源帖子 ID 过滤
+- `source_comment_id`（可选）：按来源评论 ID 过滤
 - `keyword`：在 `content / user_name / reason` 等字段做模糊匹配（详见 `export_service.build_leads_query`）
 - `page` / `page_size`：同上
 
 响应：`success_response({items: [LeadOut], total, page, page_size})`，按 `id DESC`。
 
-`LeadOut` 字段：`id, platform, source_id, source_type, source_post_id, source_comment_id, user_name, content, lead_level, lead_score, demand_type, risk_level, evidence, reason, follow_up_script, status, created_at, updated_at`。
+`LeadOut` 字段：`id, platform, source_id, source_type, source_post_id, source_comment_id, source_post_title, source_post_url, user_name, content, lead_level, lead_score, demand_type, risk_level, evidence, reason, follow_up_script, status, created_at, updated_at`。
+
+- `source_post_title`：来源帖子标题（冗余字段，由 `_enrich_lead_out` 填充）
+- `source_post_url`：来源帖子 URL（冗余字段，由 `_enrich_lead_out` 填充）
 
 `evidence` 是 JSON，结构由评分服务输出：
 
@@ -271,7 +353,7 @@
 
 `GET /api/leads/export`
 
-查询参数：与 7.1 完全一致（除分页外），不分页，全量导出。
+查询参数：与 7.1 完全一致（含 `source_post_id`、`source_comment_id`，除分页外），不分页，全量导出。
 
 响应：
 
@@ -342,67 +424,65 @@
 
 ---
 
-## 十、真实指定链接采集配置
+## 十、采集器能力 Collectors
 
-当前真实采集入口包括两部分：
+路由前缀：`/api/collectors`
 
-- 监控源接口：`/api/monitor-sources`（创建/管理/触发采集）
-- 采集器能力接口：`/api/collectors`、`/api/collectors/validate-config`、`/api/collectors/health`
+### 10.1 采集器能力列表
 
-### 10.1 创建 manual_post Playwright 监控源
+`GET /api/collectors`
 
-`POST /api/monitor-sources`
-
-请求体：
+响应：
 
 ```json
 {
-  "source_type": "manual_post",
-  "platform": "xhs",
-  "name": "真实帖子链接",
-  "value": "https://example.com/post/1",
-  "config": {
-    "collector_type": "playwright",
-    "max_comments_per_post": 50,
-    "timeout_ms": 15000,
-    "wait_after_load_ms": 1200
+  "collectors": {
+    "media_crawler": {
+      "name": "MediaCrawler 多平台采集器",
+      "description": "...",
+      "status": "ready",
+      "supports": ["keyword", "competitor_account", "manual_post", "hot_post_rule"],
+      "config": { ... }
+    }
   },
-  "enabled": true
+  "summary": {
+    "ready": ["media_crawler"],
+    "implementing": [],
+    "planned": []
+  }
 }
 ```
 
-校验规则：
+### 10.2 配置校验
 
-1. `collector_type=playwright` 仅支持 `source_type=manual_post`。
-2. `value` 必须以 `http://` 或 `https://` 开头。
-3. 非 `manual_post` 传入 `collector_type=playwright` 会返回 400。
-4. 评论为空允许采集成功，`comment_count=0`。
+`POST /api/collectors/validate-config`
 
-### 10.2 Playwright raw_data
+请求体：采集器配置字典。
 
-真实采集成功后，`posts.raw_data` 和 `comments.raw_data` 会包含：
+响应：
 
 ```json
 {
-  "collector": "playwright",
-  "source_url": "https://example.com/post/1",
-  "parser": "GenericPostParser",
-  "browser_channel": "chromium",
-  "extracted_comment_count": 2
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "config": { ... }
 }
 ```
 
-### 10.3 后续真实采集规划
+### 10.3 健康检查
 
-当前能力状态：
+`GET /api/collectors/health`
 
-- 已实现：`/api/collectors`
-- 已实现：`/api/collectors/validate-config`
-- 已实现：`/api/collectors/health`
-- 已实现：ExternalApiCollector
-- 已实现：GenericWebCollector
-- 已实现：XhsCollector（初版）
-- 尚未实现或不稳定：定时采集、异步队列、抖音/知乎真实采集
+响应：
+
+```json
+{
+  "status": "ok",
+  "ready_collectors": 1,
+  "total_collectors": 1
+}
+```
 
 ---
 
@@ -458,4 +538,4 @@
 - `/api/collectors/test`
 - 采集任务的定时调度 / 异步执行接口
 - 后台批量 / 定时生成 daily_report
-- 抖音/知乎平台真实采集
+- `mock` / `playwright` / `external_api` / `generic_web` 采集器（代码文件存在但 CollectorFactory 不路由）

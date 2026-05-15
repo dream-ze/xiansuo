@@ -14,7 +14,9 @@
 
 - id
 - source_type：keyword / competitor_account / manual_post / hot_post_rule
-- platform：xhs / douyin / zhihu / other
+- platform：xhs / douyin / zhihu / kuaishou / bilibili / weibo / tieba / other
+
+  > 注意：monitor_source_service 校验接受以上 8 个平台，但 MediaCrawler 当前仅支持 xhs / douyin / zhihu 三个平台的采集。创建 kuaishou / bilibili / weibo / tieba / other 平台的监控源会成功，但触发采集时会因 MediaCrawler 不支持而失败。
 - name
 - value
 - config JSON
@@ -60,13 +62,17 @@
 - id
 - source_id
 - source_type
+- source_value：采集来源值（关键词、帖子链接等）
 - platform
 - status：pending / running / success / failed
+- limit_count：采集数量限制，默认 20
 - started_at
 - finished_at
 - error_message
 - post_count
 - comment_count
+- collected_posts：实际采集到的帖子数
+- collected_comments：实际采集到的评论数
 - lead_count
 - discovered_competitor_count
 - created_at

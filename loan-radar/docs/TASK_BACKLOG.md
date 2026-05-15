@@ -6,42 +6,54 @@
 - [x] 数据库模型和 Alembic 迁移
 - [x] Pydantic Schemas
 - [x] 监控源 CRUD
-- [x] MockCollector
+- [x] MockCollector（代码存在，Factory 已不路由）
 - [x] 线索识别规则引擎
 - [x] 触发采集完整链路
 - [x] 线索查询和 CSV 导出
 - [x] 今日报告生成
 - [x] 同行账号发现池后端和前端页面
 - [x] 前端基础页面：监控源、采集任务、帖子池、评论池、线索池、今日报告
+- [x] MediaCrawler 多平台采集器（替代 Mock/Playwright/ExternalApi/GenericWeb）
+- [x] 采集任务创建与运行接口（/api/collection/tasks）
+- [x] 帖子/评论去重（platform + post_id / comment_id）
+- [x] 采集后更新 monitor_sources.last_crawled_at
+- [x] 错误信息脱敏
+- [x] 线索追踪到帖子双向导航
+- [x] 前端导航精简与全局优化
+- [x] API.md 补全缺失接口和字段文档
+- [x] DB_DESIGN.md 补充 crawl_tasks 新增字段和平台枚举说明
+- [x] PRD.md 更新为 MediaCrawler 单一采集器架构
+- [x] DEMO_FLOW.md 更新为 MediaCrawler 演示流程
+- [x] README.md 更新移除过时采集器描述和 XHS CDP 说明
 
-## P1 当前任务：manual_post 真实公开链接采集 MVP
+## P1 当前任务：阻塞修复与功能补全
 
-- [x] 将 Playwright 采集限制为 `manual_post`
-- [x] 拆分通用页面解析器边界
-- [x] 允许真实页面无评论时成功入库帖子
-- [x] 创建监控源时校验 `manual_post + playwright` URL
-- [x] 拒绝 `keyword + playwright`
-- [x] 前端监控源页支持真实指定链接采集提示和默认配置
-- [x] 帖子池展示原链接
-- [x] 评论池支持按帖子 ID 核验
-- [ ] 补充真实采集 smoke test 文档和演示流程
+- [ ] 恢复 smoke_test 可运行状态（当前依赖 mock/playwright 但 Factory 不支持）
+- [ ] 前端 MonitorSourcesPage 默认 collector_type 改为 media_crawler（当前默认 mock 会触发采集失败）
+- [ ] PendingCompetitorsPage 挂载路由，同行审核功能可达
+- [ ] 前端监控源页移除不可用的 playwright/external_api/generic_web 选项
+- [ ] 平台枚举两层不一致修复：创建监控源时校验平台是否可被当前采集器支持
 
-## P2 下一步：真实采集稳定性
+## P2 下一步：稳定性与清理
 
-- [ ] 采集结果去重：posts 按 `platform + post_id`
-- [ ] 评论去重：comments 按 `platform + comment_id`
-- [ ] 已存在评论不重复生成 lead
-- [ ] 采集成功后更新 `monitor_sources.last_crawled_at`
-- [ ] 错误信息脱敏
+- [ ] 评估旧采集器代码（MockCollector/PlaywrightCollector/ExternalApiCollector/GenericWebCollector）是否删除或归档
+- [ ] 删除 HomePage.tsx 死代码
+- [ ] 归档历史文档（PHASE3/4/5_ACCEPTANCE、REAL_COLLECTION_PLAN 等）
 - [ ] 增加真实采集测试页面或本地 HTML fixture
+- [ ] smoke_test 新增 pending competitors 审核步骤
+- [ ] CODEX_TASK_RULES.md 审核并更新过时规则
 
-## P3 后续：External API 接入
+## P3 后续：扩展能力
 
+- [ ] 恢复 MockCollector 到 Factory 路由（保证无 MediaCrawler 服务时演示可跑）
+- [ ] 扩展 MediaCrawler 支持更多平台（快手、B站、微博、贴吧）
 - [ ] 定义外部采集 API 标准协议
-- [ ] 实现 ExternalApiCollector
+- [ ] 实现 ExternalApiCollector（恢复 Factory 路由）
 - [ ] 支持 `endpoint`、`api_key_env`、`timeout`、`retry`
 - [ ] 前端支持 external_api 配置
 - [ ] 测试 API Key 不泄漏
+- [ ] 定时采集调度
+- [ ] 异步采集队列
 
 ## 暂缓
 
