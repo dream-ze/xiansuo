@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import DashboardPage from "../pages/DashboardPage";
 import CrawlTasksPage from "../pages/CrawlTasksPage";
-import RealCollectionTasksPage from "../pages/RealCollectionTasksPage";
 import DailyReportsPage from "../pages/DailyReportsPage";
 import LeadsPage from "../pages/LeadsPage";
 import MonitorSourcesPage from "../pages/MonitorSourcesPage";
@@ -15,7 +14,6 @@ export default function AppRoutes() {
       <Route path="/" element={<DashboardPage />} />
       <Route path="/monitor-sources" element={<MonitorSourcesPage />} />
       <Route path="/crawl-tasks" element={<CrawlTasksPage />} />
-      <Route path="/collection-tasks" element={<RealCollectionTasksPage />} />
       <Route path="/posts" element={<PostsPage />} />
       <Route path="/comments" element={<CommentsPage />} />
       <Route path="/leads" element={<LeadsPage />} />
