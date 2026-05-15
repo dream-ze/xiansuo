@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { getComments, type Comment, type CommentQueryParams } from "../api/client";
 
@@ -21,6 +22,8 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 export default function CommentsPage() {
+  const navigate = useNavigate();
+
   const [items, setItems] = useState<Comment[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -88,6 +91,10 @@ export default function CommentsPage() {
 
   async function handleNextPage() {
     await loadData(page + 1, filters, suspectedFilter);
+  }
+
+  function handleViewLeads(commentId: number) {
+    navigate(`/leads?source_comment_id=${commentId}`);
   }
 
   return (
@@ -221,6 +228,7 @@ export default function CommentsPage() {
                   <th>需求类型</th>
                   <th>风险等级</th>
                   <th>疑似需求</th>
+                  <th>关联线索</th>
                   <th>点赞</th>
                   <th>发布时间</th>
                 </tr>
@@ -236,6 +244,13 @@ export default function CommentsPage() {
                     <td>{item.demand_type || "-"}</td>
                     <td>{item.risk_level || "-"}</td>
                     <td>{item.is_suspected_demand ? "是" : "否"}</td>
+                    <td>
+                      {item.has_lead ? (
+                        <button type="button" className="btn-sm lead-count-btn" onClick={() => handleViewLeads(item.id)}>查看</button>
+                      ) : (
+                        <span className="text-muted">-</span>
+                      )}
+                    </td>
                     <td>{item.like_count}</td>
                     <td>{formatDateTime(item.publish_time)}</td>
                   </tr>

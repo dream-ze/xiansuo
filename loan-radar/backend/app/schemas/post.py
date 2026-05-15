@@ -22,6 +22,7 @@ class PostOut(BaseModel):
     collect_count: int
     publish_time: datetime | None = None
     is_hot: bool
+    lead_count: int = 0
     raw_data: Any | None = None
     created_at: datetime
     updated_at: datetime

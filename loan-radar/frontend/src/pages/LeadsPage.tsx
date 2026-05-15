@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   exportLeadsCsv,
@@ -28,6 +29,11 @@ function downloadBlob(blob: Blob, filename: string) {
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
+}
+
+function truncate(text: string | null | undefined, max = 30) {
+  if (!text) return "-";
+  return text.length > max ? text.slice(0, max) + "..." : text;
 }
 
 function buildEvidenceSections(evidence: Lead["evidence"]) {
@@ -70,6 +76,9 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function LeadsPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
   const [items, setItems] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -81,19 +90,27 @@ export default function LeadsPage() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [statTotals, setStatTotals] = useState<Record<string, number>>({ all: 0, A: 0, B: 0, C: 0, D: 0 });
-  const [filters, setFilters] = useState<LeadQueryParams>({
-    lead_level: "",
-    demand_type: "",
-    platform: "",
-    status: "",
-    source_type: "",
-    keyword: "",
+  const [filters, setFilters] = useState<LeadQueryParams>(() => {
+    const sp = searchParams;
+    return {
+      lead_level: sp.get("lead_level") || "",
+      demand_type: sp.get("demand_type") || "",
+      platform: sp.get("platform") || "",
+      status: sp.get("status") || "",
+      source_type: sp.get("source_type") || "",
+      keyword: sp.get("keyword") || "",
+      source_post_id: sp.get("source_post_id") ? Number(sp.get("source_post_id")) : undefined,
+      source_comment_id: sp.get("source_comment_id") ? Number(sp.get("source_comment_id")) : undefined,
+    };
   });
   const [draftStatuses, setDraftStatuses] = useState<Record<number, string>>({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const hasItems = useMemo(() => items.length > 0, [items]);
+
+  const activeSourcePostId = filters.source_post_id;
+  const activeSourceCommentId = filters.source_comment_id;
 
   async function loadData(nextPage = page, nextFilters = filters) {
     setLoading(true);
@@ -106,6 +123,8 @@ export default function LeadsPage() {
         status: nextFilters.status || undefined,
         source_type: nextFilters.source_type || undefined,
         keyword: nextFilters.keyword || undefined,
+        source_post_id: nextFilters.source_post_id || undefined,
+        source_comment_id: nextFilters.source_comment_id || undefined,
       };
 
       const [listResult, allResult, aResult, bResult, cResult, dResult] = await Promise.all([
@@ -164,6 +183,8 @@ export default function LeadsPage() {
       status: "",
       source_type: "",
       keyword: "",
+      source_post_id: undefined,
+      source_comment_id: undefined,
     };
     setFilters(nextFilters);
     setPage(1);
@@ -221,12 +242,20 @@ export default function LeadsPage() {
         status: filters.status || undefined,
         source_type: filters.source_type || undefined,
         keyword: filters.keyword || undefined,
+        source_post_id: filters.source_post_id || undefined,
+        source_comment_id: filters.source_comment_id || undefined,
       });
       downloadBlob(blob, "leads.csv");
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "导出 CSV 失败");
     } finally {
       setExporting(false);
+    }
+  }
+
+  function handleGoToPost(lead: Lead) {
+    if (lead.source_post_id) {
+      navigate(`/posts?highlight=${lead.source_post_id}`);
     }
   }
 
@@ -249,6 +278,19 @@ export default function LeadsPage() {
         <div className="stat-card"><span>C 级线索</span><strong>{statTotals.C}</strong></div>
         <div className="stat-card"><span>D 级线索</span><strong>{statTotals.D}</strong></div>
       </section>
+
+      {activeSourcePostId ? (
+        <div className="active-filter-hint">
+          <span>已按来源帖子 ID={activeSourcePostId} 过滤</span>
+          <button type="button" onClick={() => { setFilters((f) => ({ ...f, source_post_id: undefined })); void loadData(1, { ...filters, source_post_id: undefined }); }}>清除</button>
+        </div>
+      ) : null}
+      {activeSourceCommentId ? (
+        <div className="active-filter-hint">
+          <span>已按来源评论 ID={activeSourceCommentId} 过滤</span>
+          <button type="button" onClick={() => { setFilters((f) => ({ ...f, source_comment_id: undefined })); void loadData(1, { ...filters, source_comment_id: undefined }); }}>清除</button>
+        </div>
+      ) : null}
 
       <section className="card">
         <div className="card-header card-header-row">
@@ -338,6 +380,7 @@ export default function LeadsPage() {
                   <th>线索评分</th>
                   <th>需求类型</th>
                   <th>评论内容</th>
+                  <th>来源帖子</th>
                   <th>识别理由</th>
                   <th>跟进话术</th>
                   <th>风险等级</th>
@@ -352,6 +395,21 @@ export default function LeadsPage() {
                     <td>{lead.lead_score}</td>
                     <td>{lead.demand_type || "-"}</td>
                     <td className="cell-break">{lead.content || "-"}</td>
+                    <td>
+                      {lead.source_post_title ? (
+                        <div className="source-post-cell">
+                          <span className="cell-break" title={lead.source_post_title}>{truncate(lead.source_post_title, 20)}</span>
+                          <div className="source-post-actions">
+                            {lead.source_post_url ? (
+                              <a href={lead.source_post_url} target="_blank" rel="noreferrer">原链接</a>
+                            ) : null}
+                            <button type="button" className="btn-sm" onClick={() => handleGoToPost(lead)}>帖子池</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-muted">-</span>
+                      )}
+                    </td>
                     <td className="cell-break">{lead.reason || "-"}</td>
                     <td className="cell-break">{lead.follow_up_script || "-"}</td>
                     <td>{lead.risk_level || "-"}</td>
@@ -402,7 +460,25 @@ export default function LeadsPage() {
                   <div><span>风险等级</span><strong>{detailLead.risk_level || "-"}</strong></div>
                 </div>
 
+                {detailLead.source_post_title ? (
+                  <div className="source-post-section">
+                    <h4>来源帖子</h4>
+                    <div className="detail-grid compact">
+                      <div><span>帖子标题</span><strong>{detailLead.source_post_title}</strong></div>
+                      <div><span>帖子链接</span><strong>
+                        {detailLead.source_post_url ? (
+                          <a href={detailLead.source_post_url} target="_blank" rel="noreferrer">打开原帖</a>
+                        ) : "-"}
+                      </strong></div>
+                    </div>
+                    <div className="action-row" style={{ marginTop: 8 }}>
+                      <button type="button" onClick={() => { setDetailOpen(false); handleGoToPost(detailLead); }}>在帖子池中查看</button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="evidence-list">
+                  <h4>评分证据</h4>
                   {evidenceSections.length > 0 ? evidenceSections.map((section) => (
                     <section key={section.title} className="evidence-block">
                       <h4>{section.title}</h4>

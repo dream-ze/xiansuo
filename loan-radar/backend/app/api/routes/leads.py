@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
 from app.models.lead import Lead
+from app.models.post import Post
 from app.schemas.lead import LeadOut
 from app.services.export_service import (
     VALID_LEAD_STATUSES,
@@ -30,7 +31,16 @@ def validation_error_response(message: str) -> JSONResponse:
     return JSONResponse(status_code=400, content=error_response(message))
 
 
-# /export 必须在 /{lead_id} 之前注册，避免 FastAPI 将 "export" 当成 id 匹配
+def _enrich_lead_out(lead: Lead, db: Session) -> dict:
+    data = LeadOut.model_validate(lead).model_dump(mode="json")
+    if lead.source_post_id is not None:
+        post = db.query(Post).filter(Post.id == lead.source_post_id).first()
+        if post is not None:
+            data["source_post_title"] = post.title or post.content
+            data["source_post_url"] = post.post_url
+    return data
+
+
 @router.get("/export")
 def export_leads_endpoint(
     lead_level: str | None = None,
@@ -40,6 +50,8 @@ def export_leads_endpoint(
     status: str | None = None,
     source_type: str | None = None,
     keyword: str | None = None,
+    source_post_id: int | None = None,
+    source_comment_id: int | None = None,
     db: Session = Depends(get_db),
 ):
     query = build_leads_query(
@@ -51,6 +63,8 @@ def export_leads_endpoint(
         status=status,
         source_type=source_type,
         keyword=keyword,
+        source_post_id=source_post_id,
+        source_comment_id=source_comment_id,
     )
     leads = query.order_by(Lead.id.desc()).all()
     csv_bytes = export_leads_csv(leads)
@@ -70,6 +84,8 @@ def list_leads_endpoint(
     status: str | None = None,
     source_type: str | None = None,
     keyword: str | None = None,
+    source_post_id: int | None = None,
+    source_comment_id: int | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     db: Session = Depends(get_db),
@@ -83,6 +99,8 @@ def list_leads_endpoint(
         status=status,
         source_type=source_type,
         keyword=keyword,
+        source_post_id=source_post_id,
+        source_comment_id=source_comment_id,
     )
     total = query.count()
     leads = (
@@ -91,7 +109,7 @@ def list_leads_endpoint(
         .limit(page_size)
         .all()
     )
-    items = [LeadOut.model_validate(lead).model_dump(mode="json") for lead in leads]
+    items = [_enrich_lead_out(lead, db) for lead in leads]
     return success_response(
         {
             "items": items,
@@ -121,5 +139,5 @@ def update_lead_status_endpoint(
     db.commit()
     db.refresh(lead)
 
-    data = LeadOut.model_validate(lead).model_dump(mode="json")
+    data = _enrich_lead_out(lead, db)
     return success_response(data)

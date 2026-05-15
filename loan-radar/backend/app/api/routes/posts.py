@@ -1,15 +1,37 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.models.lead import Lead
 from app.models.post import Post
 from app.schemas.post import PostOut
-from app.utils.response import success_response
+from app.utils.response import error_response, success_response
 
 router = APIRouter(tags=["posts"])
+
+
+def _enrich_post_out(post: Post, db: Session) -> dict:
+    data = PostOut.model_validate(post).model_dump(mode="json")
+    lead_count = db.query(func.count(Lead.id)).filter(
+        Lead.source_post_id == post.id
+    ).scalar()
+    data["lead_count"] = lead_count or 0
+    return data
+
+
+@router.get("/api/posts/{post_id}")
+def get_post_endpoint(
+    post_id: int,
+    db: Session = Depends(get_db),
+):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        return error_response("post not found")
+    data = _enrich_post_out(post, db)
+    return success_response(data)
 
 
 @router.get("/api/posts")
@@ -52,7 +74,7 @@ def list_posts_endpoint(
         .all()
     )
 
-    items = [PostOut.model_validate(post).model_dump(mode="json") for post in posts]
+    items = [_enrich_post_out(post, db) for post in posts]
     return success_response(
         {
             "items": items,

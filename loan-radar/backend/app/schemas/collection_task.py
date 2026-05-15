@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CollectionTaskCreate(BaseModel):
-    platform: Literal["xhs"] = "xhs"
+    platform: str = "xhs"
     source_type: Literal["keyword", "account", "post_url"]
     source_value: str = Field(min_length=1, max_length=1000)
     limit_count: int = Field(default=10, ge=1, le=100)

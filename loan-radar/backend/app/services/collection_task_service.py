@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
 from app.collectors.base import CollectionAuthError, CollectionNoDataError, CollectionRequestError
-from app.collectors.xhs_metrics import classify_provider_error
-from app.collectors.xhs_provider import XhsProvider
 from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
 from app.models.lead import Lead
@@ -20,7 +18,6 @@ from app.services.crawl_task_service import get_crawl_task, mark_crawl_task_fail
 from app.services.lead_scoring_service import LeadScoringService
 
 SUPPORTED_COLLECTION_SOURCE_TYPES = {"keyword", "account", "post_url"}
-DEFAULT_COMMENT_LIMIT = 50
 
 
 def create_collection_task(db: Session, payload: CollectionTaskCreate) -> CrawlTask:
@@ -75,7 +72,10 @@ def get_collection_task(db: Session, task_id: int) -> CrawlTask | None:
     return task
 
 
-def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | None = None) -> CrawlTask:
+def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
+    from app.collectors.media_crawler.collector import MediaCrawlerCollector
+    from app.collectors.media_crawler.mappers import SUPPORTED_PLATFORMS
+
     task.status = "running"
     task.started_at = datetime.now(timezone.utc)
     task.finished_at = None
@@ -89,39 +89,42 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
     db.commit()
     db.refresh(task)
 
-    own_provider = False
-    provider_instance = provider
     try:
         if task.source_type not in SUPPORTED_COLLECTION_SOURCE_TYPES:
             raise ValueError(f"unsupported collection task source_type: {task.source_type}")
 
-        if provider_instance is None:
-            provider_instance = XhsProvider()
-            own_provider = True
+        if task.platform not in SUPPORTED_PLATFORMS:
+            raise ValueError(
+                f"MediaCrawler does not support platform '{task.platform}'. "
+                f"Supported: {', '.join(sorted(SUPPORTED_PLATFORMS))}"
+            )
 
         source = _ensure_collection_monitor_source(db, task)
 
-        if task.source_type == "keyword":
-            provider_result = provider_instance.collect_by_keyword(task.source_value, task.limit_count)
-        elif task.source_type == "account":
-            provider_result = provider_instance.collect_by_account(task.source_value, task.limit_count)
-        else:
-            provider_result = provider_instance.collect_by_post_url(task.source_value)
+        collector = MediaCrawlerCollector()
+        collector_source = SimpleNamespace(
+            source_type=_map_task_source_type(task.source_type),
+            platform=task.platform,
+            value=task.source_value,
+            config={
+                "collector_type": "media_crawler",
+                "max_posts": task.limit_count,
+                "enable_comments": True,
+            },
+        )
+        collector_result = collector.collect(collector_source)
 
         scoring_service = LeadScoringService()
-        partial_errors = list(provider_result.errors)
-        created_post_ids: list[int] = []
         post_id_map: dict[str, int] = {}
+        created_post_ids: list[int] = []
         inserted_posts = 0
         inserted_comments = 0
         lead_count = 0
-        total_comments_collected = 0
 
         mapped_source_type = _map_task_source_type(task.source_type)
 
-        for collected_post in provider_result.posts:
+        for collected_post in collector_result.posts:
             if not collected_post.post_id:
-                partial_errors.append("skip post without post_id")
                 continue
 
             if _post_already_exists(db, collected_post.platform, collected_post.post_id):
@@ -132,97 +135,77 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
                 )
                 if existing_post is not None:
                     post_id_map[collected_post.post_id] = existing_post.id
-            else:
-                post = Post(
-                    platform=collected_post.platform,
+                continue
+
+            post = Post(
+                platform=collected_post.platform,
+                source_id=source.id,
+                source_type=mapped_source_type,
+                post_id=collected_post.post_id,
+                title=collected_post.title,
+                content=collected_post.content,
+                post_url=collected_post.post_url,
+                author_name=collected_post.author_name,
+                author_profile_url=collected_post.author_profile_url,
+                like_count=collected_post.like_count,
+                comment_count=collected_post.comment_count,
+                collect_count=collected_post.collect_count,
+                publish_time=collected_post.publish_time,
+                is_hot=collected_post.is_hot,
+                raw_data=collected_post.raw_data,
+            )
+            db.add(post)
+            db.flush()
+            post_id_map[collected_post.post_id] = post.id
+            created_post_ids.append(post.id)
+            inserted_posts += 1
+
+        for collected_comment in collector_result.comments:
+            if not collected_comment.comment_id:
+                continue
+            if _comment_already_exists(db, collected_comment.platform, collected_comment.comment_id):
+                continue
+
+            comment = Comment(
+                platform=collected_comment.platform,
+                post_id=collected_comment.post_id,
+                comment_id=collected_comment.comment_id,
+                user_name=collected_comment.user_name,
+                user_profile_url=collected_comment.user_profile_url,
+                content=collected_comment.content,
+                like_count=collected_comment.like_count,
+                publish_time=collected_comment.publish_time,
+                raw_data=collected_comment.raw_data,
+                is_suspected_demand=False,
+            )
+            scoring_result = scoring_service.score(collected_comment.content or "")
+            comment.is_suspected_demand = scoring_result.is_suspected_demand
+            comment.demand_type = scoring_result.demand_type
+            comment.risk_level = scoring_result.risk_level
+            db.add(comment)
+            db.flush()
+            inserted_comments += 1
+
+            if scoring_result.is_suspected_demand:
+                lead = Lead(
+                    platform=collected_comment.platform,
                     source_id=source.id,
                     source_type=mapped_source_type,
-                    post_id=collected_post.post_id,
-                    title=collected_post.title,
-                    content=collected_post.content,
-                    post_url=collected_post.post_url,
-                    author_name=collected_post.author_name,
-                    author_profile_url=collected_post.author_profile_url,
-                    like_count=collected_post.like_count,
-                    comment_count=collected_post.comment_count,
-                    collect_count=collected_post.collect_count,
-                    publish_time=collected_post.publish_time,
-                    is_hot=collected_post.is_hot,
-                    raw_data=collected_post.raw_data,
-                )
-                db.add(post)
-                db.flush()
-                post_id_map[collected_post.post_id] = post.id
-                created_post_ids.append(post.id)
-                inserted_posts += 1
-
-            try:
-                raw_data = collected_post.raw_data if isinstance(collected_post.raw_data, dict) else {}
-                xsec_token = str(raw_data.get("xsec_token") or "")
-                comments = provider_instance.collect_comments(
-                    post_id=collected_post.post_id,
-                    post_url=collected_post.post_url or task.source_value,
-                    xsec_token=xsec_token,
-                    limit=DEFAULT_COMMENT_LIMIT,
-                )
-            except CollectionNoDataError:
-                comments = []
-            except (CollectionAuthError, CollectionRequestError, ValueError) as error:
-                classified = classify_provider_error(error)
-                partial_errors.append(
-                    f"post {collected_post.post_id} comments failed [{classified.level}:{classified.error_type}]: "
-                    f"{_sanitize_error_message(error)}"
-                )
-                comments = []
-
-            total_comments_collected += len(comments)
-
-            for collected_comment in comments:
-                if not collected_comment.comment_id:
-                    continue
-                if _comment_already_exists(db, collected_comment.platform, collected_comment.comment_id):
-                    continue
-
-                comment = Comment(
-                    platform=collected_comment.platform,
-                    post_id=collected_comment.post_id,
-                    comment_id=collected_comment.comment_id,
+                    source_post_id=post_id_map.get(collected_comment.post_id),
+                    source_comment_id=comment.id,
                     user_name=collected_comment.user_name,
-                    user_profile_url=collected_comment.user_profile_url,
                     content=collected_comment.content,
-                    like_count=collected_comment.like_count,
-                    publish_time=collected_comment.publish_time,
-                    raw_data=collected_comment.raw_data,
-                    is_suspected_demand=False,
+                    lead_level=scoring_result.lead_level,
+                    lead_score=scoring_result.lead_score,
+                    demand_type=scoring_result.demand_type,
+                    risk_level=scoring_result.risk_level,
+                    evidence=scoring_result.evidence,
+                    reason=scoring_result.reason,
+                    follow_up_script=scoring_result.follow_up_script,
+                    status="new",
                 )
-                scoring_result = scoring_service.score(collected_comment.content or "")
-                comment.is_suspected_demand = scoring_result.is_suspected_demand
-                comment.demand_type = scoring_result.demand_type
-                comment.risk_level = scoring_result.risk_level
-                db.add(comment)
-                db.flush()
-                inserted_comments += 1
-
-                if scoring_result.is_suspected_demand:
-                    lead = Lead(
-                        platform=collected_comment.platform,
-                        source_id=source.id,
-                        source_type=mapped_source_type,
-                        source_post_id=post_id_map.get(collected_comment.post_id),
-                        source_comment_id=comment.id,
-                        user_name=collected_comment.user_name,
-                        content=collected_comment.content,
-                        lead_level=scoring_result.lead_level,
-                        lead_score=scoring_result.lead_score,
-                        demand_type=scoring_result.demand_type,
-                        risk_level=scoring_result.risk_level,
-                        evidence=scoring_result.evidence,
-                        reason=scoring_result.reason,
-                        follow_up_script=scoring_result.follow_up_script,
-                        status="new",
-                    )
-                    db.add(lead)
-                    lead_count += 1
+                db.add(lead)
+                lead_count += 1
 
         discovered_competitor_count = 0
         if task.source_type == "keyword" and created_post_ids:
@@ -238,13 +221,6 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
         db.add(source)
         db.commit()
 
-        if not provider_result.posts:
-            raise CollectionNoDataError("no xhs posts collected")
-
-        warning_message = None
-        if partial_errors:
-            warning_message = "partial failures: " + " | ".join(partial_errors[:10])
-
         return mark_crawl_task_success(
             db=db,
             crawl_task=task,
@@ -252,29 +228,23 @@ def run_collection_task(db: Session, task: CrawlTask, provider: XhsProvider | No
             comment_count=inserted_comments,
             lead_count=lead_count,
             discovered_competitor_count=discovered_competitor_count,
-            collected_posts=len(provider_result.posts),
-            collected_comments=total_comments_collected,
-            error_message=warning_message,
+            collected_posts=len(collector_result.posts),
+            collected_comments=len(collector_result.comments),
         )
     except (CollectionAuthError, CollectionNoDataError, CollectionRequestError, ValueError) as error:
         db.rollback()
-        classified = classify_provider_error(error)
         return mark_crawl_task_failed(
             db,
             task,
-            f"[{classified.level}:{classified.error_type}] {_sanitize_error_message(error)}",
+            f"[MediaCrawler] {_sanitize_error_message(error)}",
         )
     except Exception as error:
         db.rollback()
-        classified = classify_provider_error(error)
         return mark_crawl_task_failed(
             db,
             task,
-            f"[{classified.level}:{classified.error_type}] {_sanitize_error_message(error)}",
+            f"[MediaCrawler] {_sanitize_error_message(error)}",
         )
-    finally:
-        if own_provider and provider_instance is not None:
-            provider_instance.close()
 
 
 def _ensure_collection_monitor_source(db: Session, task: CrawlTask) -> MonitorSource:
@@ -297,9 +267,10 @@ def _ensure_collection_monitor_source(db: Session, task: CrawlTask) -> MonitorSo
         name=f"collection:{task.source_type}:{task.source_value[:48]}",
         value=task.source_value,
         config={
-            "collector_type": "xhs",
+            "collector_type": "media_crawler",
             "mode": "real",
             "max_posts": task.limit_count,
+            "enable_comments": True,
             "managed_by": "collection_tasks_api",
         },
         enabled=True,

@@ -18,6 +18,8 @@ def build_leads_query(
     status: str | None = None,
     source_type: str | None = None,
     keyword: str | None = None,
+    source_post_id: int | None = None,
+    source_comment_id: int | None = None,
 ):
     query = db.query(Lead)
 
@@ -33,6 +35,10 @@ def build_leads_query(
         query = query.filter(Lead.status == status)
     if source_type is not None:
         query = query.filter(Lead.source_type == source_type)
+    if source_post_id is not None:
+        query = query.filter(Lead.source_post_id == source_post_id)
+    if source_comment_id is not None:
+        query = query.filter(Lead.source_comment_id == source_comment_id)
     if keyword:
         pattern = f"%{keyword.strip()}%"
         query = query.filter(

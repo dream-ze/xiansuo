@@ -1,8 +1,5 @@
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-const defaultApiBaseUrl =
-  typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://localhost:8000";
+const defaultApiBaseUrl = "http://localhost:8001";
 const rawApiBaseUrl = viteEnv?.VITE_API_BASE_URL || defaultApiBaseUrl;
 export const API_BASE_URL = rawApiBaseUrl.replace(/\/$/, "");
 
@@ -74,7 +71,7 @@ export type CrawlTask = {
 };
 
 export type CollectionTaskCreatePayload = {
-  platform: "xhs";
+  platform: string;
   source_type: "keyword" | "account" | "post_url";
   source_value: string;
   limit_count: number;
@@ -94,6 +91,8 @@ export type Lead = {
   source_type: string;
   source_post_id: number | null;
   source_comment_id: number | null;
+  source_post_title: string | null;
+  source_post_url: string | null;
   user_name: string | null;
   content: string | null;
   lead_level: string;
@@ -123,6 +122,8 @@ export type LeadQueryParams = {
   status?: string;
   source_type?: string;
   keyword?: string;
+  source_post_id?: number;
+  source_comment_id?: number;
   page?: number;
   page_size?: number;
 };
@@ -147,6 +148,7 @@ export type Post = {
   collect_count: number;
   publish_time: string | null;
   is_hot: boolean;
+  lead_count: number;
   raw_data: unknown;
   created_at: string;
   updated_at: string;
@@ -182,6 +184,7 @@ export type Comment = {
   is_suspected_demand: boolean;
   demand_type: string | null;
   risk_level: string | null;
+  has_lead: boolean;
   raw_data: unknown;
   created_at: string;
   updated_at: string;
@@ -414,6 +417,10 @@ export function getPosts(params: PostQueryParams = {}) {
   return requestJson<PostListResponse>(`/api/posts${queryString ? `?${queryString}` : ""}`);
 }
 
+export function getPost(postId: number) {
+  return requestJson<Post>(`/api/posts/${postId}`);
+}
+
 export function getComments(params: CommentQueryParams = {}) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -471,53 +478,6 @@ export async function exportLeadsCsv(params: LeadQueryParams = {}) {
     throw new Error(`导出失败: ${response.status}`);
   }
   return response.blob();
-}
-
-export type XhsAuthStatus = {
-  started: boolean;
-  logged_in: boolean;
-  sign_available: boolean;
-  headless: boolean;
-  state_dir: string;
-};
-
-export type XhsLoginResponse = {
-  logged_in: boolean;
-  qr_code?: string;
-  qr_type?: string;
-  message?: string;
-};
-
-export function getXhsAuthStatus() {
-  return requestJson<XhsAuthStatus>("/api/xhs-auth/status");
-}
-
-export function startXhsLogin(headless: boolean = true) {
-  return requestJson<XhsLoginResponse>(`/api/xhs-auth/start-login?headless=${headless}`, {
-    method: "POST",
-  });
-}
-
-export function checkXhsLogin() {
-  return requestJson<XhsLoginResponse>("/api/xhs-auth/check-login");
-}
-
-export function refreshXhsQrcode() {
-  return requestJson<XhsLoginResponse>("/api/xhs-auth/refresh-qrcode", {
-    method: "POST",
-  });
-}
-
-export function logoutXhs() {
-  return requestJson<{ message: string }>("/api/xhs-auth/logout", {
-    method: "POST",
-  });
-}
-
-export function restartXhsBrowser(headless: boolean = true) {
-  return requestJson<XhsAuthStatus>(`/api/xhs-auth/restart?headless=${headless}`, {
-    method: "POST",
-  });
 }
 
 export function generateDailyReport(platform?: string) {

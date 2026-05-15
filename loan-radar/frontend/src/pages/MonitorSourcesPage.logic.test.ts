@@ -16,12 +16,12 @@ function buildForm(overrides: Partial<CreateFormState>): CreateFormState {
 }
 
 describe("MonitorSourcesPage source_type 与 collector_type 联动", () => {
-  it("keyword 仅允许 mock/external_api/xhs", () => {
-    expect(getAllowedCollectorTypesBySourceType("keyword")).toEqual(["mock", "external_api", "xhs"]);
+  it("keyword 仅允许 mock/external_api", () => {
+    expect(getAllowedCollectorTypesBySourceType("keyword")).toEqual(["mock", "media_crawler", "external_api"]);
   });
 
-  it("manual_post 仅允许 playwright/generic_web/xhs", () => {
-    expect(getAllowedCollectorTypesBySourceType("manual_post")).toEqual(["playwright", "generic_web", "xhs"]);
+  it("manual_post 仅允许 playwright/generic_web", () => {
+    expect(getAllowedCollectorTypesBySourceType("manual_post")).toEqual(["playwright", "media_crawler", "generic_web"]);
   });
 
   it("未知 source_type 回退为 mock", () => {
@@ -45,10 +45,11 @@ describe("MonitorSourcesPage 动态字段", () => {
     expect(getDynamicFieldKeysByCollectorType("generic_web")).toContain("selectors.comment_item");
   });
 
-  it("xhs 字段集合包含 cookies 与可选 selectors", () => {
-    const fields = getDynamicFieldKeysByCollectorType("xhs");
+  it("media_crawler 字段集合包含 login_type 与 cookies", () => {
+    const fields = getDynamicFieldKeysByCollectorType("media_crawler");
+    expect(fields).toContain("login_type");
     expect(fields).toContain("cookies");
-    expect(fields).toContain("selectors.note_container");
+    expect(fields).toContain("enable_comments");
   });
 });
 
@@ -83,16 +84,6 @@ describe("MonitorSourcesPage 表单校验", () => {
     expect(() => buildPayloadFromForm(form)).toThrow("external_api 必须填写 endpoint");
   });
 
-  it("xhs 必须有 cookies", () => {
-    const form = buildForm({
-      collector_type: "xhs",
-      cookies: "",
-      value: "https://www.xiaohongshu.com/explore",
-    });
-
-    expect(() => buildPayloadFromForm(form)).toThrow("xhs 必须填写 cookies");
-  });
-
   it("max_posts/max_comments_per_post 必须是正整数", () => {
     const form = buildForm({
       max_posts: "0",
@@ -118,5 +109,24 @@ describe("MonitorSourcesPage 表单校验", () => {
     expect((payload.config as Record<string, unknown>).external_api).toMatchObject({
       endpoint: "https://api.example.com/collect",
     });
+  });
+
+  it("media_crawler 合法配置可生成 payload", () => {
+    const form = buildForm({
+      source_type: "keyword",
+      collector_type: "media_crawler",
+      platform: "xhs",
+      value: "征信花了",
+      login_type: "cookie",
+      cookies: "sessionid=abc123",
+      enable_comments: true,
+      max_posts: "20",
+      max_comments_per_post: "50",
+    });
+
+    const payload = buildPayloadFromForm(form);
+    expect((payload.config as Record<string, unknown>).collector_type).toBe("media_crawler");
+    expect((payload.config as Record<string, unknown>).login_type).toBe("cookie");
+    expect((payload.config as Record<string, unknown>).enable_comments).toBe(true);
   });
 });

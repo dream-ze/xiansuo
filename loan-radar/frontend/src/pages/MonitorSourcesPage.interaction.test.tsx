@@ -22,7 +22,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
         playwright: { name: "Playwright", status: "ready", supports: [], description: "" },
         external_api: { name: "External API", status: "ready", supports: [], description: "" },
         generic_web: { name: "Generic Web", status: "ready", supports: [], description: "" },
-        xhs: { name: "XHS", status: "ready", supports: [], description: "" },
+        media_crawler: { name: "MediaCrawler", status: "ready", supports: [], description: "" },
       },
     });
   });
@@ -55,7 +55,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       });
     });
 
-    it("keyword source_type 时，collector_type 只显示 mock、external_api、xhs", async () => {
+    it("keyword source_type 时，collector_type 只显示 mock、media_crawler、external_api", async () => {
       renderWithRouter(<MonitorSourcesPage />);
 
       await waitFor(() => {
@@ -66,12 +66,12 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       const options = Array.from(collectorSelect.options).map((o) => o.value);
 
       expect(options).toContain("mock");
+      expect(options).toContain("media_crawler");
       expect(options).toContain("external_api");
-      expect(options).toContain("xhs");
       expect(options).not.toContain("playwright");
     });
 
-    it("manual_post source_type 时，collector_type 只显示 playwright、generic_web、xhs", async () => {
+    it("manual_post source_type 时，collector_type 只显示 playwright、media_crawler、generic_web", async () => {
       const user = userEvent.setup();
       renderWithRouter(<MonitorSourcesPage />);
 
@@ -87,8 +87,8 @@ describe("MonitorSourcesPage 组件交互测试", () => {
         const options = Array.from(collectorSelect.options).map((o) => o.value);
 
         expect(options).toContain("playwright");
+        expect(options).toContain("media_crawler");
         expect(options).toContain("generic_web");
-        expect(options).toContain("xhs");
         expect(options).not.toContain("mock");
       });
     });
@@ -133,7 +133,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       });
     });
 
-    it("选择 xhs 时，显示 cookies 和可选 selectors", async () => {
+    it("选择 media_crawler 时，显示 login_type 和 cookies 字段", async () => {
       const user = userEvent.setup();
       renderWithRouter(<MonitorSourcesPage />);
 
@@ -142,12 +142,11 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       });
 
       const collectorSelect = screen.getByDisplayValue("mock：演示 / 回归测试");
-      await user.selectOptions(collectorSelect, "xhs");
+      await user.selectOptions(collectorSelect, "media_crawler");
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText("sessionid=...; userid=...")).toBeInTheDocument();
-        expect(screen.getByText(/仅保存在本地开发数据库用于测试/)).toBeInTheDocument();
-      });
+        expect(screen.getByText(/login_type/)).toBeInTheDocument();
+      }, { timeout: 5000 });
     });
   });
 
@@ -175,29 +174,6 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       });
     });
 
-    it("xhs 缺少 cookies 时提交显示错误", async () => {
-      const user = userEvent.setup();
-      renderWithRouter(<MonitorSourcesPage />);
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("关键词")).toBeInTheDocument();
-      });
-
-      const collectorSelect = screen.getByDisplayValue("mock：演示 / 回归测试");
-      await user.selectOptions(collectorSelect, "xhs");
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText("sessionid=...; userid=...")).toBeInTheDocument();
-      });
-
-      const submitButton = screen.getByText("新增");
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(screen.getByText(/xhs 必须填写 cookies/)).toBeInTheDocument();
-      });
-    });
-
     it("外部API缺少api_key_env时也应该允许提交（可选字段）", async () => {
       const user = userEvent.setup();
       renderWithRouter(<MonitorSourcesPage />);
@@ -206,17 +182,13 @@ describe("MonitorSourcesPage 组件交互测试", () => {
         expect(screen.getByDisplayValue("关键词")).toBeInTheDocument();
       });
 
-      // Switch to external_api
       const collectorSelect = screen.getByDisplayValue("mock：演示 / 回归测试");
       await user.selectOptions(collectorSelect, "external_api");
 
-      // Verify endpoint field is shown
       await waitFor(() => {
         expect(screen.getByPlaceholderText("https://your-api.example.com/collect")).toBeInTheDocument();
       });
 
-      // Note: We don't try to submit because it requires valid endpoint
-      // Just verify the field is rendered correctly
       const endpointInput = screen.getByPlaceholderText("https://your-api.example.com/collect");
       expect(endpointInput).toBeInTheDocument();
     });

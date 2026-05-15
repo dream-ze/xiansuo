@@ -9,8 +9,8 @@ class CollectorConfig(BaseModel):
     """采集器通用配置"""
 
     collector_type: str = Field(
-        default="mock",
-        description="采集器类型: mock/playwright/xhs/douyin/zhihu/external_api/generic_web",
+        default="media_crawler",
+        description="采集器类型: media_crawler",
     )
     mode: str = Field(
         default="test", description="模式: test（测试）/ real（真实）"
@@ -42,25 +42,17 @@ class CollectorConfig(BaseModel):
     )
     proxies: str | None = Field(default=None, description="代理地址: http://ip:port")
     user_agent: str | None = Field(default=None, description="自定义 UA")
-    xhs_provider_driver: str | None = Field(
+    login_type: str | None = Field(
         default=None,
-        description="XHS provider driver: pc/spider/cdp/browser/auto（可选，默认读取环境变量）",
+        description="MediaCrawler 登录方式: cookie/qrcode/phone",
     )
-    xhs_cdp_endpoint: str | None = Field(
+    enable_comments: bool | None = Field(
         default=None,
-        description="XHS CDP endpoint（默认 http://127.0.0.1:9222）",
-    )
-    xhs_cdp_browser_channel: str | None = Field(
-        default=None,
-        description="XHS CDP browser channel（可选，提示本机 Chrome/Edge 类型）",
-    )
-    xhs_fallback_to_pc: bool | None = Field(
-        default=None,
-        description="XHS spider 失败时是否回退到 pc client（可选，默认读取环境变量）",
+        description="MediaCrawler 是否采集评论（默认 True）",
     )
 
     class Config:
-        extra = "allow"  # 允许额外字段
+        extra = "allow"
 
     @staticmethod
     def parse(config: Any | None) -> "CollectorConfig":
@@ -77,41 +69,15 @@ class CollectorConfig(BaseModel):
 
     def validate_collector_type(self) -> tuple[bool, str]:
         """校验采集器类型是否支持"""
-        supported_types = {
-            "mock",
-            "playwright",
-            "xhs",
-            "douyin",
-            "zhihu",
-            "external_api",
-            "generic_web",
-        }
+        supported_types = {"media_crawler"}
         if self.collector_type not in supported_types:
             return False, f"Unsupported collector_type: {self.collector_type}"
         return True, ""
 
     def validate_for_collector_type(self) -> tuple[bool, str]:
         """针对不同采集器类型的具体校验"""
-        if self.collector_type == "playwright":
-            if not self.entry_url and not self.max_posts:
-                return False, "playwright requires entry_url or max_posts config"
-        elif self.collector_type == "generic_web":
-            if not self.entry_url:
-                return False, "generic_web requires entry_url"
-            if not self.selectors:
-                return False, "generic_web requires selectors config"
-        elif self.collector_type == "external_api":
-            if not self.external_api:
-                return False, "external_api requires external_api config"
-            if "endpoint" not in self.external_api:
-                return False, "external_api requires endpoint in config"
-        elif self.collector_type == "xhs":
-            driver = (self.xhs_provider_driver or "pc").strip().lower()
-            if driver not in {"pc", "spider", "cdp", "browser", "auto"}:
-                return False, f"xhs_provider_driver must be one of pc/spider/cdp/browser/auto, got {self.xhs_provider_driver}"
-            if driver not in {"cdp", "auto", "browser"} and not self.cookies:
-                return False, "xhs requires cookies for pc/spider driver"
-        elif self.collector_type in ["douyin", "zhihu"]:
-            if not self.cookies:
-                return False, f"{self.collector_type} requires cookies"
+        if self.collector_type == "media_crawler":
+            login_type = (self.login_type or "cookie").strip().lower()
+            if login_type not in {"cookie", "qrcode", "phone"}:
+                return False, f"login_type must be one of cookie/qrcode/phone, got {login_type}"
         return True, ""

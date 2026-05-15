@@ -17,6 +17,10 @@ import {
 const PLATFORM_OPTIONS = [
   { label: "小红书", value: "xhs" },
   { label: "抖音", value: "douyin" },
+  { label: "快手", value: "kuaishou" },
+  { label: "B站", value: "bilibili" },
+  { label: "微博", value: "weibo" },
+  { label: "贴吧", value: "tieba" },
   { label: "知乎", value: "zhihu" },
   { label: "其他", value: "other" },
 ];
@@ -31,16 +35,16 @@ const SOURCE_TYPE_OPTIONS = [
 const COLLECTOR_TYPE_OPTIONS = [
   { label: "mock：演示 / 回归测试", value: "mock" },
   { label: "playwright：指定公开帖子链接", value: "playwright" },
+  { label: "media_crawler：多平台采集（小红书/抖音/快手/B站/微博/贴吧/知乎）", value: "media_crawler" },
   { label: "external_api：外部采集 API", value: "external_api" },
   { label: "generic_web：通用网页采集", value: "generic_web" },
-  { label: "xhs：小红书采集器", value: "xhs" },
 ];
 
 export const SOURCE_ALLOWED_COLLECTOR_TYPES: Record<string, string[]> = {
-  keyword: ["mock", "external_api", "xhs"],
-  competitor_account: ["mock", "external_api", "xhs"],
-  manual_post: ["playwright", "generic_web", "xhs"],
-  hot_post_rule: ["mock"],
+  keyword: ["mock", "media_crawler", "external_api"],
+  competitor_account: ["mock", "media_crawler", "external_api"],
+  manual_post: ["playwright", "media_crawler", "generic_web"],
+  hot_post_rule: ["mock", "media_crawler"],
 };
 
 export function getAllowedCollectorTypesBySourceType(sourceType: string): string[] {
@@ -63,17 +67,13 @@ export function getDynamicFieldKeysByCollectorType(collectorType: string): strin
       "max_comments_per_post",
     ];
   }
-  if (collectorType === "xhs") {
+  if (collectorType === "media_crawler") {
     return [
-      "entry_url_or_value",
+      "login_type",
       "cookies",
+      "enable_comments",
       "max_posts",
       "max_comments_per_post",
-      "selectors.note_container",
-      "selectors.title",
-      "selectors.content",
-      "selectors.author",
-      "selectors.comment_item",
     ];
   }
   return ["max_posts", "max_comments_per_post"];
@@ -112,12 +112,13 @@ export type CreateFormState = {
   endpoint: string;
   api_key_env: string;
   cookies: string;
+  login_type: string;
+  enable_comments: boolean;
   selector_post_container: string;
   selector_title: string;
   selector_content: string;
   selector_author: string;
   selector_comment_item: string;
-  selector_note_container: string;
 };
 
 export const DEFAULT_CREATE_FORM: CreateFormState = {
@@ -125,7 +126,7 @@ export const DEFAULT_CREATE_FORM: CreateFormState = {
   platform: "xhs",
   name: "关键词 - 征信花了",
   value: "征信花了",
-  collector_type: "mock",
+  collector_type: "media_crawler",
   max_posts: "10",
   max_comments_per_post: "10",
   enabled: true,
@@ -133,12 +134,13 @@ export const DEFAULT_CREATE_FORM: CreateFormState = {
   endpoint: "",
   api_key_env: "",
   cookies: "",
+  login_type: "qrcode",
+  enable_comments: true,
   selector_post_container: "",
   selector_title: "",
   selector_content: "",
   selector_author: "",
   selector_comment_item: "",
-  selector_note_container: "",
 };
 
 function toPositiveInteger(value: string, fieldName: string): number {
@@ -177,8 +179,11 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
     throw new Error("external_api 必须填写 endpoint");
   }
 
-  if (collectorType === "xhs" && !cookies) {
-    throw new Error("xhs 必须填写 cookies");
+  if (collectorType === "media_crawler") {
+    const validLoginTypes = ["cookie", "qrcode", "phone"];
+    if (form.login_type && !validLoginTypes.includes(form.login_type)) {
+      throw new Error("media_crawler login_type 必须是 cookie/qrcode/phone");
+    }
   }
 
   const config: Record<string, unknown> = {
@@ -208,24 +213,15 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
     }
   }
 
-  if (collectorType === "xhs") {
-    const selectors: Record<string, string> = {};
-    if (form.selector_note_container.trim()) selectors.note_container = form.selector_note_container.trim();
-    if (form.selector_title.trim()) selectors.title = form.selector_title.trim();
-    if (form.selector_content.trim()) selectors.content = form.selector_content.trim();
-    if (form.selector_author.trim()) selectors.author = form.selector_author.trim();
-    if (form.selector_comment_item.trim()) selectors.comment_item = form.selector_comment_item.trim();
-
-    config.cookies = cookies;
-    if (entryUrl) {
-      config.entry_url = entryUrl;
-    }
-    if (Object.keys(selectors).length > 0) {
-      config.selectors = selectors;
+  if (collectorType === "media_crawler") {
+    config.login_type = form.login_type || "qrcode";
+    config.enable_comments = form.enable_comments;
+    if (cookies) {
+      config.cookies = cookies;
     }
   }
 
-  const finalValue = collectorType === "xhs" && entryUrl && !payloadValue ? entryUrl : payloadValue;
+  const finalValue = payloadValue;
 
   return {
     source_type: sourceType,
@@ -521,7 +517,7 @@ export default function MonitorSourcesPage() {
             </select>
           </label>
 
-          {(selectedCollectorType === "external_api" || selectedCollectorType === "generic_web" || selectedCollectorType === "xhs") && (
+          {(selectedCollectorType === "external_api" || selectedCollectorType === "generic_web") && (
             <label>
               <span>entry_url</span>
               <input
@@ -598,59 +594,41 @@ export default function MonitorSourcesPage() {
             </>
           )}
 
-          {selectedCollectorType === "xhs" && (
+          {selectedCollectorType === "media_crawler" && (
             <>
+              <label>
+                <span>登录方式 (login_type)</span>
+                <select
+                  value={createForm.login_type}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, login_type: event.target.value }))}
+                >
+                  <option value="qrcode">扫码登录（推荐）</option>
+                  <option value="cookie">Cookie 登录</option>
+                  <option value="phone">手机号登录</option>
+                </select>
+              </label>
               <label className="form-grid-span-2">
-                <span>cookies</span>
+                <span>cookies（可选）</span>
                 <textarea
                   className="text-area"
                   value={createForm.cookies}
                   onChange={(event) => setCreateForm((current) => ({ ...current, cookies: event.target.value }))}
-                  placeholder="sessionid=...; userid=..."
+                  placeholder="sessionid=...; userid=...（Cookie 登录时填写，扫码登录可留空）"
                 />
                 <small className="field-hint">
-                  仅保存在本地开发数据库用于测试；不要打印到日志；不要提交到 Git；生产环境应改为安全凭证管理；不做验证码绕过、不做批量账号、不做代理池。
+                  扫码登录无需填写 Cookie，采集时会弹出浏览器窗口扫码。Cookie 登录需填写目标平台的 Cookie。
+                  支持小红书、抖音、快手、B站、微博、贴吧、知乎。
                 </small>
               </label>
               <label>
-                <span>selectors.note_container（可选）</span>
-                <input
-                  value={createForm.selector_note_container}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_note_container: event.target.value }))}
-                  placeholder="div[class*='feed-item']"
-                />
-              </label>
-              <label>
-                <span>selectors.title（可选）</span>
-                <input
-                  value={createForm.selector_title}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_title: event.target.value }))}
-                  placeholder="h2, h3"
-                />
-              </label>
-              <label>
-                <span>selectors.content（可选）</span>
-                <input
-                  value={createForm.selector_content}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_content: event.target.value }))}
-                  placeholder="p, .desc"
-                />
-              </label>
-              <label>
-                <span>selectors.author（可选）</span>
-                <input
-                  value={createForm.selector_author}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_author: event.target.value }))}
-                  placeholder=".author"
-                />
-              </label>
-              <label>
-                <span>selectors.comment_item（可选）</span>
-                <input
-                  value={createForm.selector_comment_item}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_comment_item: event.target.value }))}
-                  placeholder=".comment-item"
-                />
+                <span>采集评论 (enable_comments)</span>
+                <select
+                  value={createForm.enable_comments ? "true" : "false"}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, enable_comments: event.target.value === "true" }))}
+                >
+                  <option value="true">是</option>
+                  <option value="false">否</option>
+                </select>
               </label>
             </>
           )}

@@ -13,6 +13,8 @@ class LeadOut(BaseModel):
     source_type: str
     source_post_id: int | None = None
     source_comment_id: int | None = None
+    source_post_title: str | None = None
+    source_post_url: str | None = None
     user_name: str | None = None
     content: str | None = None
     lead_level: str

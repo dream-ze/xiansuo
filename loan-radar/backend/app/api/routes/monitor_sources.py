@@ -47,6 +47,24 @@ def validation_error_response(error: ValueError) -> JSONResponse:
     )
 
 
+@router.get("/media-crawler/health")
+def media_crawler_health_check():
+    from app.collectors.media_crawler.bridge import MediaCrawlerBridge
+    from app.collectors.media_crawler.mappers import SUPPORTED_PLATFORMS, PLATFORM_LABELS
+
+    bridge = MediaCrawlerBridge()
+    is_healthy = bridge.health_check()
+
+    return success_response({
+        "status": "healthy" if is_healthy else "unreachable",
+        "api_base_url": bridge.api_base_url,
+        "supported_platforms": [
+            {"value": p, "label": PLATFORM_LABELS.get(p, p)}
+            for p in sorted(SUPPORTED_PLATFORMS)
+        ],
+    })
+
+
 @router.post("")
 def create_monitor_source_endpoint(
     payload: MonitorSourceCreate,

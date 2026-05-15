@@ -1,19 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
-  checkXhsLogin,
   createCollectionTask,
   getCollectionTasks,
-  getXhsAuthStatus,
-  logoutXhs,
-  refreshXhsQrcode,
-  restartXhsBrowser,
   runCollectionTask,
-  startXhsLogin,
   type CrawlTask,
   type CollectionTaskCreatePayload,
-  type XhsAuthStatus,
-  type XhsLoginResponse,
 } from "../api/client";
 
 type SourceType = "keyword" | "account" | "post_url";
@@ -21,13 +13,24 @@ type SourceType = "keyword" | "account" | "post_url";
 type FormState = {
   sourceType: SourceType;
   sourceValue: string;
+  platform: string;
   limitCount: number;
 };
 
+const PLATFORM_OPTIONS = [
+  { label: "小红书", value: "xhs" },
+  { label: "抖音", value: "douyin" },
+  { label: "快手", value: "kuaishou" },
+  { label: "B站", value: "bilibili" },
+  { label: "微博", value: "weibo" },
+  { label: "贴吧", value: "tieba" },
+  { label: "知乎", value: "zhihu" },
+];
+
 const SOURCE_TYPE_OPTIONS: Array<{ value: SourceType; label: string; hint: string }> = [
   { value: "keyword", label: "关键词采集", hint: "输入关键词，例如：征信花了" },
-  { value: "account", label: "同行账号采集", hint: "输入小红书账号主页 URL" },
-  { value: "post_url", label: "指定帖子采集", hint: "输入小红书笔记 URL" },
+  { value: "account", label: "同行账号采集", hint: "输入账号主页 URL" },
+  { value: "post_url", label: "指定帖子采集", hint: "输入帖子 URL" },
 ];
 
 function formatDateTime(value: string | null | undefined) {
@@ -63,7 +66,12 @@ function statusClassName(status: string) {
 }
 
 export default function RealCollectionTasksPage() {
-  const [form, setForm] = useState<FormState>({ sourceType: "keyword", sourceValue: "", limitCount: 5 });
+  const [form, setForm] = useState<FormState>({
+    sourceType: "keyword",
+    sourceValue: "",
+    platform: "xhs",
+    limitCount: 5,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,25 +80,10 @@ export default function RealCollectionTasksPage() {
   const [tasks, setTasks] = useState<CrawlTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<CrawlTask | null>(null);
 
-  const [authStatus, setAuthStatus] = useState<XhsAuthStatus | null>(null);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [loginPolling, setLoginPolling] = useState(false);
-
   const selectedOption = useMemo(
     () => SOURCE_TYPE_OPTIONS.find((option) => option.value === form.sourceType),
     [form.sourceType],
   );
-
-  async function loadAuthStatus() {
-    try {
-      const status = await getXhsAuthStatus();
-      setAuthStatus(status);
-    } catch {
-      setAuthStatus(null);
-    }
-  }
 
   async function loadTasks() {
     setLoading(true);
@@ -105,7 +98,7 @@ export default function RealCollectionTasksPage() {
         return data.items.find((task) => task.id === current.id) ?? data.items[0] ?? null;
       });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "加载真实采集任务失败");
+      setError(loadError instanceof Error ? loadError.message : "加载采集任务失败");
     } finally {
       setLoading(false);
     }
@@ -113,90 +106,7 @@ export default function RealCollectionTasksPage() {
 
   useEffect(() => {
     void loadTasks();
-    void loadAuthStatus();
   }, []);
-
-  useEffect(() => {
-    if (!loginPolling) return;
-    const interval = setInterval(async () => {
-      try {
-        const result = await checkXhsLogin();
-        if (result.logged_in) {
-          setLoginPolling(false);
-          setQrCode(null);
-          await loadAuthStatus();
-        }
-      } catch {
-        // continue polling
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [loginPolling]);
-
-  async function handleStartLogin() {
-    setLoginLoading(true);
-    setLoginError(null);
-    setQrCode(null);
-    try {
-      const result: XhsLoginResponse = await startXhsLogin(false);
-      if (result.logged_in) {
-        await loadAuthStatus();
-        return;
-      }
-      if (result.qr_code) {
-        setQrCode(result.qr_code);
-        setLoginPolling(true);
-      }
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "启动登录失败");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
-
-  async function handleRefreshQr() {
-    setLoginLoading(true);
-    setLoginError(null);
-    try {
-      const result = await refreshXhsQrcode();
-      if (result.qr_code) {
-        setQrCode(result.qr_code);
-      }
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "刷新二维码失败");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
-
-  async function handleLogout() {
-    setLoginLoading(true);
-    try {
-      await logoutXhs();
-      setAuthStatus(null);
-      setQrCode(null);
-      setLoginPolling(false);
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "登出失败");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
-
-  async function handleRestart() {
-    setLoginLoading(true);
-    setLoginError(null);
-    try {
-      const status = await restartXhsBrowser(false);
-      setAuthStatus(status);
-      setQrCode(null);
-      setLoginPolling(false);
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "重启浏览器失败");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -205,7 +115,7 @@ export default function RealCollectionTasksPage() {
     setError(null);
 
     const payload: CollectionTaskCreatePayload = {
-      platform: "xhs",
+      platform: form.platform,
       source_type: form.sourceType,
       source_value: form.sourceValue.trim(),
       limit_count: form.limitCount,
@@ -234,98 +144,40 @@ export default function RealCollectionTasksPage() {
         <div>
           <p className="page-eyebrow">真实采集入口</p>
           <h1>真实采集任务</h1>
-          <p className="page-description">通过 /api/collection/tasks 创建并执行真实采集任务，覆盖关键词、账号主页、指定笔记链接三种入口。</p>
+          <p className="page-description">
+            通过 MediaCrawler 创建并执行真实采集任务，支持多平台（小红书/抖音/快手/B站/微博/贴吧/知乎），
+            覆盖关键词、账号主页、指定帖子链接三种入口。
+          </p>
         </div>
       </header>
 
       <section className="card">
         <div className="card-header">
-          <h2>XHS 浏览器登录状态</h2>
-          <p>CDP 模式需要先登录小红书，浏览器会自动获取签名参数（x-s, x-t）</p>
-        </div>
-
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 300px", minWidth: 260 }}>
-            {authStatus ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 14 }}>
-                <div>
-                  <span style={{ color: "#888" }}>浏览器状态：</span>
-                  <strong style={{ color: authStatus.started ? "#16a34a" : "#dc2626" }}>
-                    {authStatus.started ? "已启动" : "未启动"}
-                  </strong>
-                </div>
-                <div>
-                  <span style={{ color: "#888" }}>登录状态：</span>
-                  <strong style={{ color: authStatus.logged_in ? "#16a34a" : "#dc2626" }}>
-                    {authStatus.logged_in ? "已登录" : "未登录"}
-                  </strong>
-                </div>
-                <div>
-                  <span style={{ color: "#888" }}>签名可用：</span>
-                  <strong style={{ color: authStatus.sign_available ? "#16a34a" : "#dc2626" }}>
-                    {authStatus.sign_available ? "是" : "否"}
-                  </strong>
-                </div>
-                <div>
-                  <span style={{ color: "#888" }}>无头模式：</span>
-                  <strong>{authStatus.headless ? "是" : "否（有界面）"}</strong>
-                </div>
-              </div>
-            ) : (
-              <p style={{ color: "#888" }}>正在获取状态...</p>
-            )}
-
-            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-              {!authStatus?.logged_in ? (
-                <button type="button" disabled={loginLoading} onClick={() => void handleStartLogin()}>
-                  {loginLoading ? "启动中..." : "启动登录（扫码）"}
-                </button>
-              ) : null}
-              {qrCode && !authStatus?.logged_in ? (
-                <button type="button" disabled={loginLoading} onClick={() => void handleRefreshQr()}>
-                  刷新二维码
-                </button>
-              ) : null}
-              {authStatus?.logged_in ? (
-                <button type="button" disabled={loginLoading} onClick={() => void handleLogout()}>
-                  退出登录
-                </button>
-              ) : null}
-              <button type="button" disabled={loginLoading} onClick={() => void handleRestart()}>
-                重启浏览器
-              </button>
-            </div>
-
-            {loginPolling && !authStatus?.logged_in ? (
-              <p style={{ marginTop: 8, color: "#2563eb", fontSize: 13 }}>等待扫码登录中...</p>
-            ) : null}
-            {loginError ? (
-              <p style={{ marginTop: 8, color: "#dc2626", fontSize: 13 }}>{loginError}</p>
-            ) : null}
-          </div>
-
-          {qrCode && !authStatus?.logged_in ? (
-            <div style={{ flex: "0 0 auto" }}>
-              <img
-                src={qrCode}
-                alt="XHS Login QR Code"
-                style={{ width: 200, height: 200, border: "1px solid #e5e7eb", borderRadius: 8 }}
-              />
-              <p style={{ textAlign: "center", fontSize: 12, color: "#888", marginTop: 4 }}>
-                打开小红书 App 扫码登录
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
           <h2>创建并运行采集</h2>
-          <p>点击后会顺序调用：POST /api/collection/tasks，然后 POST /api/collection/tasks/{"{task_id}"}/run</p>
+          <p>基于 MediaCrawler 多平台采集，点击后会顺序调用：POST /api/collection/tasks，然后 POST /api/collection/tasks/{"{task_id}"}/run</p>
         </div>
 
         <form className="form-grid" onSubmit={handleSubmit}>
+          <label>
+            采集平台
+            <select
+              value={form.platform}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  platform: event.target.value,
+                }))
+              }
+              disabled={submitting}
+            >
+              {PLATFORM_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label>
             采集类型
             <select
@@ -420,6 +272,7 @@ export default function RealCollectionTasksPage() {
               <thead>
                 <tr>
                   <th>任务 ID</th>
+                  <th>platform</th>
                   <th>source_type</th>
                   <th>source_value</th>
                   <th>status</th>
@@ -438,6 +291,7 @@ export default function RealCollectionTasksPage() {
                 {tasks.map((task) => (
                   <tr key={task.id} onClick={() => setSelectedTask(task)}>
                     <td>{task.id}</td>
+                    <td>{task.platform}</td>
                     <td>{task.source_type}</td>
                     <td className="cell-break">{task.source_value || "-"}</td>
                     <td>
@@ -467,6 +321,10 @@ export default function RealCollectionTasksPage() {
             <p>任务 #{selectedTask.id}</p>
           </div>
           <div className="detail-grid">
+            <div>
+              <span>platform</span>
+              <strong>{selectedTask.platform}</strong>
+            </div>
             <div>
               <span>status</span>
               <strong>{selectedTask.status}</strong>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getPosts, type Post, type PostQueryParams } from "../api/client";
 
@@ -20,6 +21,10 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 export default function PostsPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get("highlight");
+
   const [items, setItems] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -83,6 +88,10 @@ export default function PostsPage() {
 
   async function handleNextPage() {
     await loadData(page + 1, filters, hotFilter);
+  }
+
+  function handleViewLeads(postId: number) {
+    navigate(`/leads?source_post_id=${postId}`);
   }
 
   return (
@@ -195,12 +204,13 @@ export default function PostsPage() {
                   <th>评论</th>
                   <th>收藏</th>
                   <th>爆款</th>
+                  <th>线索数</th>
                   <th>发布时间</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id}>
+                  <tr key={item.id} className={highlightId && Number(highlightId) === item.id ? "row-highlight" : ""}>
                     <td>{item.id}</td>
                     <td>{item.platform}</td>
                     <td>{item.source_type}</td>
@@ -215,6 +225,15 @@ export default function PostsPage() {
                     <td>{item.comment_count}</td>
                     <td>{item.collect_count}</td>
                     <td>{item.is_hot ? "是" : "否"}</td>
+                    <td>
+                      {item.lead_count > 0 ? (
+                        <button type="button" className="btn-sm lead-count-btn" onClick={() => handleViewLeads(item.id)}>
+                          {item.lead_count}
+                        </button>
+                      ) : (
+                        <span className="text-muted">0</span>
+                      )}
+                    </td>
                     <td>{formatDateTime(item.publish_time)}</td>
                   </tr>
                 ))}

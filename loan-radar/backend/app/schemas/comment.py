@@ -19,6 +19,7 @@ class CommentOut(BaseModel):
     is_suspected_demand: bool
     demand_type: str | None = None
     risk_level: str | None = None
+    has_lead: bool = False
     raw_data: Any | None = None
     created_at: datetime
     updated_at: datetime

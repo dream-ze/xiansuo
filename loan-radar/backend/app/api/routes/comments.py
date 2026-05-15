@@ -1,15 +1,25 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
 from app.models.comment import Comment
+from app.models.lead import Lead
 from app.schemas.comment import CommentOut
 from app.utils.response import success_response
 
 router = APIRouter(tags=["comments"])
+
+
+def _enrich_comment_out(comment: Comment, db: Session) -> dict:
+    data = CommentOut.model_validate(comment).model_dump(mode="json")
+    has_lead = db.query(func.count(Lead.id)).filter(
+        Lead.source_comment_id == comment.id
+    ).scalar()
+    data["has_lead"] = (has_lead or 0) > 0
+    return data
 
 
 @router.get("/api/comments")
@@ -54,9 +64,7 @@ def list_comments_endpoint(
         .all()
     )
 
-    items = [
-        CommentOut.model_validate(comment).model_dump(mode="json") for comment in comments
-    ]
+    items = [_enrich_comment_out(comment, db) for comment in comments]
     return success_response(
         {
             "items": items,

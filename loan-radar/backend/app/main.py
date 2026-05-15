@@ -11,7 +11,6 @@ from app.api.routes.leads import router as leads_router
 from app.api.routes.monitor_sources import router as monitor_sources_router
 from app.api.routes.pending_competitors import router as pending_competitors_router
 from app.api.routes.posts import router as posts_router
-from app.api.routes.xhs_auth import router as xhs_auth_router
 
 app = FastAPI(title="Loan Radar Backend")
 app.add_middleware(
@@ -19,10 +18,12 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
+        "http://localhost:5175",
         "http://localhost:4173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "http://127.0.0.1:4173",
         "http://127.0.0.1:3000",
     ],
@@ -40,7 +41,6 @@ app.include_router(content_pools_router)
 app.include_router(crawl_tasks_router)
 app.include_router(monitor_sources_router)
 app.include_router(collectors_router)
-app.include_router(xhs_auth_router)
 
 
 @app.get("/health")

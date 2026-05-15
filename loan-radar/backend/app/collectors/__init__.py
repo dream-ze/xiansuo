@@ -6,8 +6,12 @@ from app.collectors.base import (
 )
 from app.collectors.config import CollectorConfig
 from app.collectors.factory import CollectorFactory
-from app.collectors.mock_collector import MockCollector
-from app.collectors.playwright_collector import PlaywrightCollector
+from app.collectors.media_crawler import (
+    MediaCrawlerBridge,
+    MediaCrawlerCollector,
+    PLATFORM_LABELS,
+    SUPPORTED_PLATFORMS as MC_SUPPORTED_PLATFORMS,
+)
 
 __all__ = [
     "BaseCollector",
@@ -16,6 +20,8 @@ __all__ = [
     "CollectorConfig",
     "CollectorFactory",
     "CollectorResult",
-    "MockCollector",
-    "PlaywrightCollector",
+    "MC_SUPPORTED_PLATFORMS",
+    "MediaCrawlerBridge",
+    "MediaCrawlerCollector",
+    "PLATFORM_LABELS",
 ]
