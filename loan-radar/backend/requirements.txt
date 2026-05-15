@@ -10,3 +10,4 @@ pytest
 requests
 httpx
 PyExecJS
+APScheduler

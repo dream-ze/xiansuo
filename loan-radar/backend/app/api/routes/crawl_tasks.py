@@ -9,8 +9,8 @@ from app.schemas.crawl_task import CrawlTaskOut
 from app.services.crawl_task_service import (
     get_crawl_task,
     list_crawl_tasks,
-    rerun_failed_crawl_task,
 )
+from app.services.task_queue import CrawlTaskQueue
 from app.utils.response import error_response, success_response
 
 router = APIRouter(prefix="/api/crawl-tasks", tags=["crawl-tasks"])
@@ -85,15 +85,26 @@ def rerun_crawl_task_endpoint(
     if crawl_task is None:
         return not_found_response()
 
-    if crawl_task.status != "failed":
-        return validation_error_response("only failed crawl tasks can be rerun")
+    if crawl_task.status not in ("failed", "success", "retrying"):
+        return validation_error_response("only failed, completed or retrying crawl tasks can be rerun")
 
-    try:
-        rerun_task = rerun_failed_crawl_task(db, crawl_task)
-    except ValueError as error:
-        if str(error) == "monitor source not found":
-            return JSONResponse(status_code=404, content=error_response(str(error)))
-        return validation_error_response(str(error))
+    crawl_task.status = "pending"
+    crawl_task.progress = "queued"
+    crawl_task.error_message = None
+    crawl_task.finished_at = None
+    crawl_task.retry_count = 0
+    crawl_task.last_error_type = None
+    db.commit()
+    db.refresh(crawl_task)
 
-    data = CrawlTaskOut.model_validate(rerun_task).model_dump(mode="json")
-    return success_response(data)
+    queue = CrawlTaskQueue.get_instance()
+    position = queue.enqueue(crawl_task.id)
+
+    data = CrawlTaskOut.model_validate(crawl_task).model_dump(mode="json")
+    return JSONResponse(
+        status_code=202,
+        content=success_response({
+            **data,
+            "queue_position": position,
+        }),
+    )

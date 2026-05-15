@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 
+import ToastContainer from "./components/ToastContainer";
 import AppRoutes from "./routes";
 
 const NAV_ITEMS = [
@@ -10,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/comments", label: "评论" },
   { to: "/leads", label: "线索" },
   { to: "/daily-reports", label: "日报" },
+  { to: "/scoring-rules", label: "评分规则" },
 ];
 
 export default function App() {
@@ -31,6 +33,7 @@ export default function App() {
         </nav>
       </header>
       <AppRoutes />
+      <ToastContainer />
     </div>
   );
 }

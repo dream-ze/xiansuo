@@ -11,8 +11,8 @@ from app.services.collection_task_service import (
     create_collection_task,
     get_collection_task,
     list_collection_tasks,
-    run_collection_task,
 )
+from app.services.task_queue import CrawlTaskQueue
 from app.utils.response import error_response, success_response
 
 router = APIRouter(prefix="/api/collection/tasks", tags=["collection-tasks"])
@@ -72,5 +72,24 @@ def run_collection_task_endpoint(
     if task.status == "running":
         return JSONResponse(status_code=400, content=error_response("collection task is already running"))
 
-    result = run_collection_task(db, task)
-    return success_response(CrawlTaskOut.model_validate(result).model_dump(mode="json"))
+    queue = CrawlTaskQueue.get_instance()
+    position = queue.enqueue(task.id)
+
+    data = CrawlTaskOut.model_validate(task).model_dump(mode="json")
+    return JSONResponse(
+        status_code=202,
+        content=success_response({
+            **data,
+            "queue_position": position,
+        }),
+    )
+
+
+@router.get("/queue/status")
+def get_queue_status_endpoint():
+    queue = CrawlTaskQueue.get_instance()
+    return success_response({
+        "active_task_id": queue.active_task_id,
+        "queue_size": queue.queue_size,
+        "queue_items": queue.queue_items,
+    })

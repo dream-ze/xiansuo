@@ -8,6 +8,7 @@ import {
   getMonitorSources,
   toggleMonitorSource,
   crawlMonitorSource,
+  updateMonitorSource,
   type CollectorCapability,
   type CrawlTask,
   type MonitorSource,
@@ -108,6 +109,8 @@ export type CreateFormState = {
   max_posts: string;
   max_comments_per_post: string;
   enabled: boolean;
+  schedule_enabled: boolean;
+  schedule_cron: string;
   entry_url: string;
   endpoint: string;
   api_key_env: string;
@@ -130,6 +133,8 @@ export const DEFAULT_CREATE_FORM: CreateFormState = {
   max_posts: "10",
   max_comments_per_post: "10",
   enabled: true,
+  schedule_enabled: false,
+  schedule_cron: "0 */2 * * *",
   entry_url: "",
   endpoint: "",
   api_key_env: "",
@@ -230,6 +235,8 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
     value: finalValue,
     config,
     enabled: form.enabled,
+    schedule_enabled: form.schedule_enabled,
+    schedule_cron: form.schedule_enabled ? form.schedule_cron.trim() || null : null,
     last_crawled_at: null,
   };
 }
@@ -394,15 +401,31 @@ export default function MonitorSourcesPage() {
     setActionMessage(null);
 
     try {
-      const task = (await crawlMonitorSource(item.id)) as CrawlTask;
-      await refreshList();
-      if (task.status === "success") {
-        navigate("/crawl-tasks");
-      } else {
-        setActionError(task.error_message || `立即采集失败：任务 #${task.id}`);
-      }
+      const result = await crawlMonitorSource(item.id) as CrawlTask & { queue_position?: number };
+      const position = result.queue_position;
+      setActionMessage(`${item.name} 已加入采集队列${position ? `，排队位置：${position}` : ""}，任务 #${result.id}`);
     } catch (crawlError) {
       setActionError(crawlError instanceof Error ? crawlError.message : "触发采集失败");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleToggleSchedule(item: MonitorSource) {
+    setBusyKey(`schedule-${item.id}`);
+    setActionError(null);
+    setActionMessage(null);
+
+    try {
+      const newEnabled = !item.schedule_enabled;
+      await updateMonitorSource(item.id, {
+        schedule_enabled: newEnabled,
+        schedule_cron: newEnabled ? (item.schedule_cron || "0 */2 * * *") : item.schedule_cron,
+      });
+      await refreshList();
+      setActionMessage(`${item.name} 定时采集已${newEnabled ? "开启" : "关闭"}`);
+    } catch (scheduleError) {
+      setActionError(scheduleError instanceof Error ? scheduleError.message : "切换定时采集失败");
     } finally {
       setBusyKey(null);
     }
@@ -663,6 +686,29 @@ export default function MonitorSourcesPage() {
               <option value="false">停用</option>
             </select>
           </label>
+          <label>
+            <span>定时采集</span>
+            <select
+              value={createForm.schedule_enabled ? "true" : "false"}
+              onChange={(event) => setCreateForm((current) => ({ ...current, schedule_enabled: event.target.value === "true" }))}
+            >
+              <option value="false">关闭</option>
+              <option value="true">开启</option>
+            </select>
+          </label>
+          {createForm.schedule_enabled && (
+            <label>
+              <span>Cron 表达式</span>
+              <input
+                value={createForm.schedule_cron}
+                onChange={(event) => setCreateForm((current) => ({ ...current, schedule_cron: event.target.value }))}
+                placeholder="0 */2 * * *（每2小时）"
+              />
+              <small className="field-hint">
+                格式：分 时 日 月 周，例如：0 */2 * * * = 每2小时，0 9 * * * = 每天9点，30 8,20 * * * = 每天8:30和20:30
+              </small>
+            </label>
+          )}
           <div className="form-actions form-grid-span-2">
             <button type="submit" disabled={createLoading}>
               {createLoading ? "提交中..." : "新增"}
@@ -716,6 +762,7 @@ export default function MonitorSourcesPage() {
                   <th>内容/链接</th>
                   <th>采集器</th>
                   <th>状态</th>
+                  <th>定时采集</th>
                   <th>最后采集时间</th>
                   <th>操作</th>
                 </tr>
@@ -725,6 +772,7 @@ export default function MonitorSourcesPage() {
                   const toggleLoading = busyKey === `toggle-${item.id}`;
                   const deleteLoading = busyKey === `delete-${item.id}`;
                   const crawlLoading = busyKey === `crawl-${item.id}`;
+                  const scheduleLoading = busyKey === `schedule-${item.id}`;
 
                   return (
                     <tr key={item.id}>
@@ -734,6 +782,13 @@ export default function MonitorSourcesPage() {
                       <td className="cell-break">{item.value}</td>
                       <td>{typeof item.config === "object" && item.config && "collector_type" in item.config ? String((item.config as Record<string, unknown>).collector_type) : "mock"}</td>
                       <td>{item.enabled ? "启用" : "停用"}</td>
+                      <td>
+                        {item.schedule_enabled ? (
+                          <span className="status-pill status-running">{item.schedule_cron || "未配置"}</span>
+                        ) : (
+                          <span className="status-pill status-failed">关闭</span>
+                        )}
+                      </td>
                       <td>{formatDateTime(item.last_crawled_at)}</td>
                       <td>
                         <div className="action-row">
@@ -741,7 +796,10 @@ export default function MonitorSourcesPage() {
                             {item.enabled ? "停用" : "启用"}
                           </button>
                           <button type="button" onClick={() => void handleCrawl(item)} disabled={toggleLoading || deleteLoading || crawlLoading}>
-                            {crawlLoading ? "采集中..." : "立即采集"}
+                            {crawlLoading ? "入队中..." : "立即采集"}
+                          </button>
+                          <button type="button" onClick={() => void handleToggleSchedule(item)} disabled={scheduleLoading || deleteLoading}>
+                            {scheduleLoading ? "..." : item.schedule_enabled ? "关闭定时" : "开启定时"}
                           </button>
                           <button type="button" className="danger" onClick={() => void handleDelete(item)} disabled={toggleLoading || deleteLoading || crawlLoading}>
                             {deleteLoading ? "删除中..." : "删除"}

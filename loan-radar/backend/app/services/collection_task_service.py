@@ -6,16 +6,17 @@ from types import SimpleNamespace
 from sqlalchemy.orm import Session
 
 from app.collectors.base import CollectionAuthError, CollectionNoDataError, CollectionRequestError
-from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
-from app.models.lead import Lead
 from app.models.monitor_source import MonitorSource
-from app.models.post import Post
 from app.schemas.collection_task import CollectionTaskCreate
 from app.services.competitor_discovery_service import CompetitorDiscoveryService
-from app.services.crawl_pipeline_service import _comment_already_exists, _post_already_exists, _sanitize_error_message
-from app.services.crawl_task_service import get_crawl_task, mark_crawl_task_failed, mark_crawl_task_success
-from app.services.lead_scoring_service import LeadScoringService
+from app.services.crawl_pipeline_service import _sanitize_error_message, _save_comments_and_leads, _save_posts_batch
+from app.services.crawl_task_service import (
+    get_crawl_task,
+    mark_crawl_task_failed,
+    mark_crawl_task_success,
+    update_crawl_task_progress,
+)
 
 SUPPORTED_COLLECTION_SOURCE_TYPES = {"keyword", "account", "post_url"}
 
@@ -27,6 +28,7 @@ def create_collection_task(db: Session, payload: CollectionTaskCreate) -> CrawlT
         source_value=payload.source_value.strip(),
         platform=payload.platform,
         status="pending",
+        progress="queued",
         limit_count=payload.limit_count,
         post_count=0,
         comment_count=0,
@@ -34,6 +36,8 @@ def create_collection_task(db: Session, payload: CollectionTaskCreate) -> CrawlT
         collected_comments=0,
         lead_count=0,
         discovered_competitor_count=0,
+        duplicate_post_count=0,
+        duplicate_comment_count=0,
     )
     db.add(task)
     db.commit()
@@ -72,11 +76,19 @@ def get_collection_task(db: Session, task_id: int) -> CrawlTask | None:
     return task
 
 
+def run_collection_task_by_id(db: Session, task_id: int) -> CrawlTask:
+    task = get_crawl_task(db, task_id)
+    if task is None:
+        raise ValueError(f"crawl task {task_id} not found")
+    return run_collection_task(db, task)
+
+
 def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
     from app.collectors.media_crawler.collector import MediaCrawlerCollector
     from app.collectors.media_crawler.mappers import SUPPORTED_PLATFORMS
 
     task.status = "running"
+    task.progress = "collecting"
     task.started_at = datetime.now(timezone.utc)
     task.finished_at = None
     task.error_message = None
@@ -86,6 +98,8 @@ def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
     task.comment_count = 0
     task.lead_count = 0
     task.discovered_competitor_count = 0
+    task.duplicate_post_count = 0
+    task.duplicate_comment_count = 0
     db.commit()
     db.refresh(task)
 
@@ -100,10 +114,11 @@ def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
             )
 
         source = _ensure_collection_monitor_source(db, task)
+        mapped_source_type = _map_task_source_type(task.source_type)
 
         collector = MediaCrawlerCollector()
         collector_source = SimpleNamespace(
-            source_type=_map_task_source_type(task.source_type),
+            source_type=mapped_source_type,
             platform=task.platform,
             value=task.source_value,
             config={
@@ -114,98 +129,17 @@ def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
         )
         collector_result = collector.collect(collector_source)
 
-        scoring_service = LeadScoringService()
-        post_id_map: dict[str, int] = {}
-        created_post_ids: list[int] = []
-        inserted_posts = 0
-        inserted_comments = 0
-        lead_count = 0
+        update_crawl_task_progress(db, task, "saving_posts")
 
-        mapped_source_type = _map_task_source_type(task.source_type)
+        post_id_map, created_post_ids, inserted_posts, dup_posts, _updated_posts = _save_posts_batch(
+            db, collector_result.posts, source, source_type=mapped_source_type,
+        )
 
-        for collected_post in collector_result.posts:
-            if not collected_post.post_id:
-                continue
+        update_crawl_task_progress(db, task, "scoring_leads")
 
-            if _post_already_exists(db, collected_post.platform, collected_post.post_id):
-                existing_post = (
-                    db.query(Post)
-                    .filter(Post.platform == collected_post.platform, Post.post_id == collected_post.post_id)
-                    .first()
-                )
-                if existing_post is not None:
-                    post_id_map[collected_post.post_id] = existing_post.id
-                continue
-
-            post = Post(
-                platform=collected_post.platform,
-                source_id=source.id,
-                source_type=mapped_source_type,
-                post_id=collected_post.post_id,
-                title=collected_post.title,
-                content=collected_post.content,
-                post_url=collected_post.post_url,
-                author_name=collected_post.author_name,
-                author_profile_url=collected_post.author_profile_url,
-                like_count=collected_post.like_count,
-                comment_count=collected_post.comment_count,
-                collect_count=collected_post.collect_count,
-                publish_time=collected_post.publish_time,
-                is_hot=collected_post.is_hot,
-                raw_data=collected_post.raw_data,
-            )
-            db.add(post)
-            db.flush()
-            post_id_map[collected_post.post_id] = post.id
-            created_post_ids.append(post.id)
-            inserted_posts += 1
-
-        for collected_comment in collector_result.comments:
-            if not collected_comment.comment_id:
-                continue
-            if _comment_already_exists(db, collected_comment.platform, collected_comment.comment_id):
-                continue
-
-            comment = Comment(
-                platform=collected_comment.platform,
-                post_id=collected_comment.post_id,
-                comment_id=collected_comment.comment_id,
-                user_name=collected_comment.user_name,
-                user_profile_url=collected_comment.user_profile_url,
-                content=collected_comment.content,
-                like_count=collected_comment.like_count,
-                publish_time=collected_comment.publish_time,
-                raw_data=collected_comment.raw_data,
-                is_suspected_demand=False,
-            )
-            scoring_result = scoring_service.score(collected_comment.content or "")
-            comment.is_suspected_demand = scoring_result.is_suspected_demand
-            comment.demand_type = scoring_result.demand_type
-            comment.risk_level = scoring_result.risk_level
-            db.add(comment)
-            db.flush()
-            inserted_comments += 1
-
-            if scoring_result.is_suspected_demand:
-                lead = Lead(
-                    platform=collected_comment.platform,
-                    source_id=source.id,
-                    source_type=mapped_source_type,
-                    source_post_id=post_id_map.get(collected_comment.post_id),
-                    source_comment_id=comment.id,
-                    user_name=collected_comment.user_name,
-                    content=collected_comment.content,
-                    lead_level=scoring_result.lead_level,
-                    lead_score=scoring_result.lead_score,
-                    demand_type=scoring_result.demand_type,
-                    risk_level=scoring_result.risk_level,
-                    evidence=scoring_result.evidence,
-                    reason=scoring_result.reason,
-                    follow_up_script=scoring_result.follow_up_script,
-                    status="new",
-                )
-                db.add(lead)
-                lead_count += 1
+        inserted_comments, dup_comments, lead_count = _save_comments_and_leads(
+            db, collector_result.comments, source, post_id_map, set(), source_type=mapped_source_type,
+        )
 
         discovered_competitor_count = 0
         if task.source_type == "keyword" and created_post_ids:
@@ -230,6 +164,8 @@ def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
             discovered_competitor_count=discovered_competitor_count,
             collected_posts=len(collector_result.posts),
             collected_comments=len(collector_result.comments),
+            duplicate_post_count=dup_posts,
+            duplicate_comment_count=dup_comments,
         )
     except (CollectionAuthError, CollectionNoDataError, CollectionRequestError, ValueError) as error:
         db.rollback()

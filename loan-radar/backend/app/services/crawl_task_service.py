@@ -6,6 +6,32 @@ from app.models.crawl_task import CrawlTask
 from app.models.monitor_source import MonitorSource
 
 
+def create_queued_crawl_task(db: Session, source: MonitorSource) -> CrawlTask:
+    config = source.config or {}
+    crawl_task = CrawlTask(
+        source_id=source.id,
+        source_type=source.source_type,
+        source_value=source.value,
+        platform=source.platform,
+        status="pending",
+        progress="queued",
+        limit_count=int(config.get("max_posts", 20) or 20),
+        max_retries=int(config.get("max_retries", 3) or 3),
+        post_count=0,
+        comment_count=0,
+        collected_posts=0,
+        collected_comments=0,
+        lead_count=0,
+        discovered_competitor_count=0,
+        duplicate_post_count=0,
+        duplicate_comment_count=0,
+    )
+    db.add(crawl_task)
+    db.commit()
+    db.refresh(crawl_task)
+    return crawl_task
+
+
 def create_running_crawl_task(db: Session, source: MonitorSource) -> CrawlTask:
     config = source.config or {}
     crawl_task = CrawlTask(
@@ -14,7 +40,9 @@ def create_running_crawl_task(db: Session, source: MonitorSource) -> CrawlTask:
         source_value=source.value,
         platform=source.platform,
         status="running",
+        progress="collecting",
         limit_count=int(config.get("max_posts", 20) or 20),
+        max_retries=int(config.get("max_retries", 3) or 3),
         started_at=datetime.now(timezone.utc),
         post_count=0,
         comment_count=0,
@@ -22,11 +50,18 @@ def create_running_crawl_task(db: Session, source: MonitorSource) -> CrawlTask:
         collected_comments=0,
         lead_count=0,
         discovered_competitor_count=0,
+        duplicate_post_count=0,
+        duplicate_comment_count=0,
     )
     db.add(crawl_task)
     db.commit()
     db.refresh(crawl_task)
     return crawl_task
+
+
+def update_crawl_task_progress(db: Session, crawl_task: CrawlTask, progress: str) -> None:
+    crawl_task.progress = progress
+    db.commit()
 
 
 def mark_crawl_task_success(
@@ -38,9 +73,12 @@ def mark_crawl_task_success(
     discovered_competitor_count: int = 0,
     collected_posts: int | None = None,
     collected_comments: int | None = None,
+    duplicate_post_count: int = 0,
+    duplicate_comment_count: int = 0,
     error_message: str | None = None,
 ) -> CrawlTask:
     crawl_task.status = "success"
+    crawl_task.progress = "done"
     crawl_task.finished_at = datetime.now(timezone.utc)
     crawl_task.post_count = post_count
     crawl_task.comment_count = comment_count
@@ -48,6 +86,8 @@ def mark_crawl_task_success(
     crawl_task.collected_comments = comment_count if collected_comments is None else collected_comments
     crawl_task.lead_count = lead_count
     crawl_task.discovered_competitor_count = discovered_competitor_count
+    crawl_task.duplicate_post_count = duplicate_post_count
+    crawl_task.duplicate_comment_count = duplicate_comment_count
     crawl_task.error_message = error_message
     db.commit()
     db.refresh(crawl_task)
@@ -56,6 +96,7 @@ def mark_crawl_task_success(
 
 def mark_crawl_task_failed(db: Session, crawl_task: CrawlTask, error_message: str) -> CrawlTask:
     crawl_task.status = "failed"
+    crawl_task.progress = "failed"
     crawl_task.finished_at = datetime.now(timezone.utc)
     crawl_task.error_message = error_message
     db.commit()
@@ -102,7 +143,6 @@ def rerun_failed_crawl_task(db: Session, crawl_task: CrawlTask) -> CrawlTask:
     if source is None:
         raise ValueError("monitor source not found")
 
-    # 延用现有采集流水线，内部强制使用 MockCollector。
     from app.services.crawl_pipeline_service import run_monitor_source_crawl
 
     return run_monitor_source_crawl(db, source)

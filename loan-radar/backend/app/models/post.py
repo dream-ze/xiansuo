@@ -14,6 +14,7 @@ class Post(Base):
     source_id = Column(Integer, nullable=False, index=True)
     source_type = Column(String(50), nullable=False, index=True)
     post_id = Column(String(255), nullable=False, index=True)
+    content_hash = Column(String(32), nullable=True, index=True)
     title = Column(String(500), nullable=True)
     content = Column(Text, nullable=True)
     post_url = Column(String(1000), nullable=True)

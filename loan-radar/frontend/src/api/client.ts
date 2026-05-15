@@ -17,6 +17,9 @@ export type MonitorSource = {
   value: string;
   config: unknown;
   enabled: boolean;
+  schedule_enabled: boolean;
+  schedule_cron: string | null;
+  last_scheduled_at: string | null;
   last_crawled_at: string | null;
   created_at: string;
   updated_at: string;
@@ -29,6 +32,8 @@ export type MonitorSourceCreatePayload = {
   value: string;
   config?: unknown;
   enabled?: boolean;
+  schedule_enabled?: boolean;
+  schedule_cron?: string | null;
   last_crawled_at?: string | null;
 };
 
@@ -56,7 +61,11 @@ export type CrawlTask = {
   source_value?: string | null;
   platform: string;
   status: string;
+  progress: string | null;
   limit_count?: number;
+  retry_count?: number;
+  max_retries?: number;
+  last_error_type?: string | null;
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
@@ -66,6 +75,9 @@ export type CrawlTask = {
   collected_comments?: number;
   lead_count: number;
   discovered_competitor_count: number;
+  duplicate_post_count: number;
+  duplicate_comment_count: number;
+  queue_position?: number;
   created_at: string;
   updated_at: string;
 };
@@ -317,6 +329,26 @@ export function crawlMonitorSource(id: number) {
   });
 }
 
+export function updateMonitorSource(id: number, payload: Partial<MonitorSourceCreatePayload>) {
+  return requestJson<MonitorSource>(`/api/monitor-sources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type SchedulerStatus = {
+  running: boolean;
+  jobs: Array<{
+    id: string;
+    name: string;
+    next_run_time: string | null;
+  }>;
+};
+
+export function getSchedulerStatus() {
+  return requestJson<SchedulerStatus>("/api/monitor-sources/scheduler/status");
+}
+
 export async function getCollectorsCapabilities() {
   const response = await fetch(`${API_BASE_URL}/api/collectors`, {
     headers: {
@@ -493,4 +525,71 @@ export function getTodayReport(platform?: string) {
 export function listDailyReports(platform?: string) {
   const query = platform ? `?platform=${platform}` : "";
   return requestJson<DailyReport[]>(`/api/daily-reports${query}`);
+}
+
+export type QueueStatus = {
+  active_task_id: number | null;
+  queue_size: number;
+  queue_items: number[];
+};
+
+export function getQueueStatus() {
+  return requestJson<QueueStatus>("/api/collection/tasks/queue/status");
+}
+
+export type ScoringDimension = {
+  name: string;
+  weight: number;
+  patterns: string[];
+  score_per_hit: number;
+  max_score: number;
+  description: string;
+};
+
+export type ScoringRules = {
+  version: string;
+  dimensions: ScoringDimension[];
+  negative_patterns: string[];
+  negation_patterns: string[];
+  lead_level_thresholds: Record<string, number>;
+  demand_type_rules: Array<{ keywords: string[]; type: string }>;
+  risk_keywords: string[];
+  amount_pattern: string;
+};
+
+export type ScoringTestResult = {
+  lead_level: string;
+  lead_score: number;
+  demand_type: string;
+  risk_level: string;
+  evidence: Record<string, unknown>;
+  reason: string;
+  follow_up_script: string;
+  is_suspected_demand: boolean;
+};
+
+export function getScoringRules() {
+  return requestJson<ScoringRules>("/api/scoring-rules");
+}
+
+export function updateScoringRules(rules: ScoringRules) {
+  return requestJson<ScoringRules>("/api/scoring-rules", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rules }),
+  });
+}
+
+export function testScoring(text: string) {
+  return requestJson<ScoringTestResult>("/api/scoring-rules/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function reloadScoringRules() {
+  return requestJson<{ version: string; message: string }>("/api/scoring-rules/reload", {
+    method: "POST",
+  });
 }

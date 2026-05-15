@@ -7,6 +7,7 @@ import LeadsPage from "../pages/LeadsPage";
 import MonitorSourcesPage from "../pages/MonitorSourcesPage";
 import PostsPage from "../pages/PostsPage";
 import CommentsPage from "../pages/CommentsPage";
+import ScoringRulesPage from "../pages/ScoringRulesPage";
 
 export default function AppRoutes() {
   return (
@@ -18,6 +19,7 @@ export default function AppRoutes() {
       <Route path="/comments" element={<CommentsPage />} />
       <Route path="/leads" element={<LeadsPage />} />
       <Route path="/daily-reports" element={<DailyReportsPage />} />
+      <Route path="/scoring-rules" element={<ScoringRulesPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

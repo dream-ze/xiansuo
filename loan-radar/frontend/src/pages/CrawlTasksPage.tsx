@@ -1,16 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createCollectionTask,
   getCrawlTask,
   getCrawlTasks,
   getMonitorSources,
+  getQueueStatus,
   rerunCrawlTask,
   runCollectionTask,
   type CrawlTask,
   type CollectionTaskCreatePayload,
   type MonitorSource,
+  type QueueStatus,
 } from "../api/client";
+import { showToast } from "../components/ToastContainer";
 
 type SourceType = "keyword" | "account" | "post_url";
 
@@ -31,11 +34,34 @@ const PLATFORM_OPTIONS = [
   { label: "知乎", value: "zhihu" },
 ];
 
+const PLATFORM_LABELS: Record<string, string> = {
+  xhs: "小红书",
+  douyin: "抖音",
+  kuaishou: "快手",
+  bilibili: "B站",
+  weibo: "微博",
+  tieba: "贴吧",
+  zhihu: "知乎",
+  other: "其他",
+};
+
 const SOURCE_TYPE_OPTIONS: Array<{ value: SourceType; label: string; hint: string }> = [
   { value: "keyword", label: "关键词采集", hint: "输入关键词，例如：征信花了" },
   { value: "account", label: "同行账号采集", hint: "输入账号主页 URL" },
   { value: "post_url", label: "指定帖子采集", hint: "输入帖子 URL" },
 ];
+
+const PROGRESS_LABELS: Record<string, string> = {
+  queued: "排队中",
+  collecting: "采集中",
+  saving_posts: "保存帖子",
+  scoring_leads: "线索评分",
+  done: "完成",
+  failed: "失败",
+  retry_1: "重试第1次",
+  retry_2: "重试第2次",
+  retry_3: "重试第3次",
+};
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
@@ -57,12 +83,22 @@ function statusText(status: string) {
     running: "运行中",
     success: "成功",
     failed: "失败",
+    retrying: "重试中",
   };
   return mapping[status] ?? status;
 }
 
+function progressText(progress: string | null | undefined) {
+  if (!progress) return "-";
+  return PROGRESS_LABELS[progress] ?? progress;
+}
+
 function statusClassName(status: string) {
   return `status-pill status-${status}`;
+}
+
+function platformBadgeClass(platform: string) {
+  return `platform-badge platform-${platform}`;
 }
 
 type CrawlTaskView = CrawlTask & {
@@ -87,10 +123,20 @@ export default function CrawlTasksPage() {
   const [selectedTask, setSelectedTask] = useState<CrawlTaskView | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeTaskIdsRef = useRef<Set<number>>(new Set());
+  const prevStatusRef = useRef<Map<number, string>>(new Map());
 
   const selectedOption = useMemo(
     () => SOURCE_TYPE_OPTIONS.find((option) => option.value === form.sourceType),
     [form.sourceType],
+  );
+
+  const hasActiveTasks = useMemo(
+    () => tasks.some((t) => t.status === "pending" || t.status === "running" || t.status === "retrying"),
+    [tasks],
   );
 
   async function loadTasks() {
@@ -100,13 +146,20 @@ export default function CrawlTasksPage() {
     try {
       const [taskResult, sources] = await Promise.all([getCrawlTasks(), getMonitorSources()]);
       const sourceNameMap = new Map<number, MonitorSource>(sources.map((source) => [source.id, source]));
-      setTasks(
-        taskResult.items.map((task) => ({
-          ...task,
-          source_name:
-            task.source_id == null ? "手动创建" : sourceNameMap.get(task.source_id)?.name ?? `监控源 #${task.source_id}`,
-        })),
-      );
+      const taskViews = taskResult.items.map((task) => ({
+        ...task,
+        source_name:
+          task.source_id == null ? "手动创建" : sourceNameMap.get(task.source_id)?.name ?? `监控源 #${task.source_id}`,
+      }));
+      setTasks(taskViews);
+
+      const activeIds = new Set<number>();
+      for (const t of taskViews) {
+        if (t.status === "pending" || t.status === "running" || t.status === "retrying") {
+          activeIds.add(t.id);
+        }
+      }
+      activeTaskIdsRef.current = activeIds;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "加载采集任务失败");
     } finally {
@@ -114,9 +167,72 @@ export default function CrawlTasksPage() {
     }
   }
 
-  useEffect(() => {
-    void loadTasks();
+  async function loadQueueStatus() {
+    try {
+      const status = await getQueueStatus();
+      setQueueStatus(status);
+    } catch {
+      // silent
+    }
+  }
+
+  const pollActiveTasks = useCallback(async () => {
+    const activeIds = activeTaskIdsRef.current;
+    if (activeIds.size === 0) return;
+
+    try {
+      const updates = await Promise.all(
+        Array.from(activeIds).map((id) => getCrawlTask(id).catch(() => null)),
+      );
+
+      setTasks((prev) =>
+        prev.map((task) => {
+          const updated = updates.find((u) => u && u.id === task.id);
+          if (!updated) return task;
+
+          const prevStatus = prevStatusRef.current.get(task.id);
+          if (prevStatus && prevStatus !== updated.status) {
+            if (updated.status === "success") {
+              showToast("success", `任务 #${task.id} 采集完成`, `获得 ${updated.post_count} 帖子、${updated.lead_count} 线索`);
+            } else if (updated.status === "failed") {
+              showToast("error", `任务 #${task.id} 采集失败`, updated.error_message?.slice(0, 80) || "未知错误");
+            } else if (updated.status === "retrying") {
+              showToast("warning", `任务 #${task.id} 正在重试`, `第 ${updated.retry_count} 次重试`);
+            }
+          }
+          prevStatusRef.current.set(task.id, updated.status);
+
+          if (updated.status === "success" || updated.status === "failed") {
+            activeTaskIdsRef.current.delete(task.id);
+          }
+          return { ...task, ...updated };
+        }),
+      );
+    } catch {
+      // silent
+    }
   }, []);
+
+  useEffect(() => {
+    void Promise.all([loadTasks(), loadQueueStatus()]);
+  }, []);
+
+  useEffect(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (hasActiveTasks) {
+      pollingRef.current = setInterval(() => {
+        void Promise.all([pollActiveTasks(), loadQueueStatus()]);
+      }, 3000);
+    }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [hasActiveTasks, pollActiveTasks]);
 
   const hasItems = useMemo(() => tasks.length > 0, [tasks]);
 
@@ -138,12 +254,16 @@ export default function CrawlTasksPage() {
         throw new Error("请输入采集目标");
       }
       const created = await createCollectionTask(payload);
-      const ran = await runCollectionTask(created.id);
-      setFormMessage(`任务 #${ran.id} 已创建并运行，当前状态：${statusText(ran.status)}`);
+      await runCollectionTask(created.id);
+      setFormMessage(`任务 #${created.id} 已创建并加入队列，当前状态：排队中`);
+      showToast("info", `任务 #${created.id} 已创建`, "已加入采集队列，请等待执行");
       setForm((current) => ({ ...current, sourceValue: "" }));
+      activeTaskIdsRef.current.add(created.id);
+      prevStatusRef.current.set(created.id, "pending");
       await loadTasks();
     } catch (submitError) {
       setFormError(submitError instanceof Error ? submitError.message : "创建采集任务失败");
+      showToast("error", "创建任务失败", submitError instanceof Error ? submitError.message : "未知错误");
     } finally {
       setSubmitting(false);
     }
@@ -172,12 +292,16 @@ export default function CrawlTasksPage() {
 
     try {
       await rerunCrawlTask(task.id);
+      showToast("info", `任务 #${task.id} 已重新启动`, "正在重新采集");
+      activeTaskIdsRef.current.add(task.id);
+      prevStatusRef.current.set(task.id, "pending");
       await loadTasks();
       if (selectedTask?.id === task.id) {
         await handleViewTask(task.id);
       }
     } catch (rerunError) {
       setDetailError(rerunError instanceof Error ? rerunError.message : "重跑失败任务失败");
+      showToast("error", "重跑失败", rerunError instanceof Error ? rerunError.message : "未知错误");
     } finally {
       setBusyId(null);
     }
@@ -192,6 +316,20 @@ export default function CrawlTasksPage() {
           <p className="page-description">创建采集任务、查看任务状态与统计、重跑失败任务。</p>
         </div>
       </header>
+
+      {queueStatus && (
+        <div className="queue-status-bar">
+          <span className={`queue-status-dot${queueStatus.active_task_id ? "" : " idle"}`} />
+          <span>
+            {queueStatus.active_task_id
+              ? `正在执行任务 #${queueStatus.active_task_id}`
+              : "队列空闲"}
+          </span>
+          {queueStatus.queue_size > 0 && (
+            <span>· 排队中 {queueStatus.queue_size} 个任务</span>
+          )}
+        </div>
+      )}
 
       <section className="card">
         <div className="card-header">
@@ -254,8 +392,8 @@ export default function CrawlTasksPage() {
           </label>
 
           <div className="form-actions form-grid-span-2">
-            <button type="submit" disabled={submitting}>
-              {submitting ? "运行中..." : "创建并运行采集"}
+            <button type="submit" className="btn-primary" disabled={submitting}>
+              {submitting ? "提交中..." : "创建并运行采集"}
             </button>
           </div>
         </form>
@@ -272,12 +410,18 @@ export default function CrawlTasksPage() {
         <div className="card-header card-header-row">
           <div>
             <h2>任务列表</h2>
-            <p>展示任务状态、帖子数、评论数、线索数和同行发现数。</p>
+            <p>展示任务状态、进度、帖子数、评论数、线索数和同行发现数{hasActiveTasks ? "（自动刷新中）" : ""}。</p>
           </div>
-          <button type="button" onClick={() => void loadTasks()} disabled={loading}>刷新列表</button>
+          <button type="button" className="btn-secondary" onClick={() => void loadTasks()} disabled={loading}>刷新列表</button>
         </div>
 
-        {loading ? <p className="state-text">加载中...</p> : null}
+        {loading ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="skeleton skeleton-card" />
+            ))}
+          </div>
+        ) : null}
         {error ? (
           <div className="state-panel state-error">
             <p>{error}</p>
@@ -298,35 +442,45 @@ export default function CrawlTasksPage() {
                   <th>来源名称</th>
                   <th>平台</th>
                   <th>状态</th>
+                  <th>进度</th>
                   <th>帖子数</th>
                   <th>评论数</th>
                   <th>线索数</th>
-                  <th>发现同行</th>
-                  <th>失败原因</th>
+                  <th>重复</th>
+                  <th>重试</th>
                   <th>开始时间</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {tasks.map((task) => {
-                  const rerunDisabled = task.status !== "failed" || busyId === task.id;
+                  const rerunDisabled = (task.status !== "failed" && task.status !== "success" && task.status !== "retrying") || busyId === task.id;
+                  const isActive = task.status === "pending" || task.status === "running" || task.status === "retrying";
                   return (
-                    <tr key={task.id}>
+                    <tr key={task.id} className={isActive ? "row-active" : ""}>
                       <td>{task.id}</td>
                       <td>{task.source_type}</td>
                       <td className="cell-break">{task.source_name}</td>
-                      <td>{task.platform}</td>
+                      <td><span className={platformBadgeClass(task.platform)}>{PLATFORM_LABELS[task.platform] || task.platform}</span></td>
                       <td><span className={statusClassName(task.status)}>{statusText(task.status)}</span></td>
+                      <td>{progressText(task.progress)}</td>
                       <td>{task.post_count}</td>
                       <td>{task.comment_count}</td>
-                      <td>{task.lead_count}</td>
-                      <td>{task.discovered_competitor_count}</td>
-                      <td className="cell-break">{task.error_message || "-"}</td>
+                      <td><strong>{task.lead_count}</strong></td>
+                      <td>{task.duplicate_post_count + task.duplicate_comment_count > 0 ? <span className="tag tag-warning">{task.duplicate_post_count}帖/{task.duplicate_comment_count}评</span> : "-"}</td>
+                      <td>
+                        {task.retry_count > 0 ? (
+                          <span className="tag tag-warning">{task.retry_count}/{task.max_retries}</span>
+                        ) : "-"}
+                        {task.last_error_type ? (
+                          <span className="tag tag-danger" style={{ marginLeft: 4, fontSize: 11 }}>{task.last_error_type}</span>
+                        ) : null}
+                      </td>
                       <td>{formatDateTime(task.started_at)}</td>
                       <td>
                         <div className="action-row">
-                          <button type="button" onClick={() => void handleViewTask(task.id)}>查看</button>
-                          <button type="button" onClick={() => void handleRerun(task)} disabled={rerunDisabled}>
+                          <button type="button" className="btn-sm" onClick={() => void handleViewTask(task.id)}>查看</button>
+                          <button type="button" className="btn-sm" onClick={() => void handleRerun(task)} disabled={rerunDisabled}>
                             {busyId === task.id ? "重跑中..." : "重跑"}
                           </button>
                         </div>
@@ -349,16 +503,29 @@ export default function CrawlTasksPage() {
         {detailLoading ? <p className="state-text">详情加载中...</p> : null}
         {detailError ? <p className="inline-error">{detailError}</p> : null}
         {!detailLoading && !detailError && selectedTask ? (
-          <div className="detail-grid">
-            <div><span>任务 ID</span><strong>{selectedTask.id}</strong></div>
-            <div><span>来源名称</span><strong>{selectedTask.source_name}</strong></div>
-            <div><span>状态</span><strong>{statusText(selectedTask.status)}</strong></div>
-            <div><span>失败原因</span><strong>{selectedTask.error_message || "-"}</strong></div>
-            <div><span>帖子数</span><strong>{selectedTask.post_count}</strong></div>
-            <div><span>评论数</span><strong>{selectedTask.comment_count}</strong></div>
-            <div><span>线索数</span><strong>{selectedTask.lead_count}</strong></div>
-            <div><span>发现同行数</span><strong>{selectedTask.discovered_competitor_count}</strong></div>
-          </div>
+          <>
+            <div className="detail-grid">
+              <div><span>任务 ID</span><strong>{selectedTask.id}</strong></div>
+              <div><span>来源名称</span><strong>{selectedTask.source_name}</strong></div>
+              <div><span>状态</span><strong><span className={statusClassName(selectedTask.status)}>{statusText(selectedTask.status)}</span></strong></div>
+              <div><span>进度</span><strong>{progressText(selectedTask.progress)}</strong></div>
+              <div><span>平台</span><strong><span className={platformBadgeClass(selectedTask.platform)}>{PLATFORM_LABELS[selectedTask.platform] || selectedTask.platform}</span></strong></div>
+              <div><span>错误类型</span><strong>{selectedTask.last_error_type ? <span className="tag tag-danger">{selectedTask.last_error_type}</span> : "-"}</strong></div>
+              <div><span>重试次数</span><strong>{selectedTask.retry_count > 0 ? <span className="tag tag-warning">{selectedTask.retry_count}/{selectedTask.max_retries}</span> : "0"}</strong></div>
+              <div><span>帖子数</span><strong>{selectedTask.post_count}</strong></div>
+              <div><span>评论数</span><strong>{selectedTask.comment_count}</strong></div>
+              <div><span>线索数</span><strong style={{ color: "#16a34a" }}>{selectedTask.lead_count}</strong></div>
+              <div><span>发现同行数</span><strong>{selectedTask.discovered_competitor_count}</strong></div>
+              <div><span>重复帖子</span><strong>{selectedTask.duplicate_post_count > 0 ? <span className="tag tag-warning">{selectedTask.duplicate_post_count}</span> : "0"}</strong></div>
+              <div><span>重复评论</span><strong>{selectedTask.duplicate_comment_count > 0 ? <span className="tag tag-warning">{selectedTask.duplicate_comment_count}</span> : "0"}</strong></div>
+              <div><span>采集帖子</span><strong>{selectedTask.collected_posts ?? "-"}</strong></div>
+              <div><span>采集评论</span><strong>{selectedTask.collected_comments ?? "-"}</strong></div>
+              <div><span>开始时间</span><strong>{formatDateTime(selectedTask.started_at)}</strong></div>
+              <div><span>完成时间</span><strong>{formatDateTime(selectedTask.finished_at)}</strong></div>
+              <div><span>创建时间</span><strong>{formatDateTime(selectedTask.created_at)}</strong></div>
+              <div style={{ gridColumn: "span 2" }}><span>失败原因</span><strong>{selectedTask.error_message || "-"}</strong></div>
+            </div>
+          </>
         ) : null}
       </section>
     </main>

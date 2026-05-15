@@ -11,6 +11,9 @@ class MonitorSourceBase(BaseModel):
     value: str
     config: Any | None = None
     enabled: bool = True
+    schedule_enabled: bool = False
+    schedule_cron: str | None = None
+    last_scheduled_at: datetime | None = None
     last_crawled_at: datetime | None = None
 
 
@@ -25,6 +28,9 @@ class MonitorSourceUpdate(BaseModel):
     value: str | None = None
     config: Any | None = None
     enabled: bool | None = None
+    schedule_enabled: bool | None = None
+    schedule_cron: str | None = None
+    last_scheduled_at: datetime | None = None
     last_crawled_at: datetime | None = None
 
 

@@ -8,10 +8,22 @@ import {
   type Lead,
   type LeadQueryParams,
 } from "../api/client";
+import { showToast } from "../components/ToastContainer";
 
 const LEAD_LEVEL_OPTIONS = ["", "A", "B", "C", "D"];
 const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
 const STATUS_OPTIONS = ["", "new", "contacted", "invalid", "converted"];
+
+const PLATFORM_LABELS: Record<string, string> = {
+  xhs: "小红书",
+  douyin: "抖音",
+  kuaishou: "快手",
+  bilibili: "B站",
+  weibo: "微博",
+  tieba: "贴吧",
+  zhihu: "知乎",
+  other: "其他",
+};
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
   new: "新增",
@@ -36,43 +48,108 @@ function truncate(text: string | null | undefined, max = 30) {
   return text.length > max ? text.slice(0, max) + "..." : text;
 }
 
+const DIMENSION_LABELS: Record<string, string> = {
+  demand_clarity: "需求明确度",
+  urgency: "紧迫程度",
+  qualification: "资质条件",
+  product_match: "产品匹配",
+  weak_intent: "弱意向信号",
+  amount: "金额信息",
+  authenticity: "真实性",
+  risk_penalty: "风险扣分",
+};
+
 function buildEvidenceSections(evidence: Lead["evidence"]) {
   if (!evidence || typeof evidence !== "object") {
-    return [] as Array<{ title: string; value: string }>;
+    return [] as Array<{ title: string; value: string; type?: string }>;
   }
 
   const typedEvidence = evidence as Record<string, unknown>;
-  const sections: Array<{ title: string; value: string }> = [];
+  const sections: Array<{ title: string; value: string; type?: string }> = [];
 
   const matchedWords = typedEvidence.matched_words;
-  if (matchedWords && typeof matchedWords === "object") {
-    sections.push({ title: "命中关键词", value: JSON.stringify(matchedWords, null, 2) });
+  if (matchedWords && Array.isArray(matchedWords) && matchedWords.length > 0) {
+    sections.push({ title: "命中关键词", value: matchedWords.join("、"), type: "tags" });
   }
 
   const amounts = typedEvidence.amounts;
-  if (amounts) {
-    sections.push({ title: "金额信息", value: JSON.stringify(amounts, null, 2) });
+  if (amounts && Array.isArray(amounts) && amounts.length > 0) {
+    sections.push({ title: "金额信息", value: amounts.join(", ") });
+  }
+
+  const negationDetected = typedEvidence.negation_detected;
+  if (negationDetected) {
+    const negationWords = typedEvidence.negation_words as string[] | undefined;
+    sections.push({
+      title: "否定词检测",
+      value: negationWords?.length ? `检测到否定词：${negationWords.join("、")}` : "检测到否定表达",
+      type: "warning",
+    });
+  }
+
+  const riskKeywords = typedEvidence.risk_keywords_matched;
+  if (riskKeywords && Array.isArray(riskKeywords) && riskKeywords.length > 0) {
+    sections.push({ title: "风险关键词", value: riskKeywords.join("、"), type: "danger" });
+  }
+
+  const negativeKeywords = typedEvidence.negative_keywords_matched;
+  if (negativeKeywords && Array.isArray(negativeKeywords) && negativeKeywords.length > 0) {
+    sections.push({ title: "负面关键词", value: negativeKeywords.join("、"), type: "danger" });
   }
 
   const scoreBreakdown = typedEvidence.score_breakdown;
   if (scoreBreakdown && typeof scoreBreakdown === "object") {
-    sections.push({ title: "评分拆解", value: JSON.stringify(scoreBreakdown, null, 2) });
+    const breakdown = scoreBreakdown as Record<string, number>;
+    const lines = Object.entries(breakdown)
+      .map(([key, val]) => `${DIMENSION_LABELS[key] || key}: ${val > 0 ? "+" : ""}${val}`)
+      .join("\n");
+    sections.push({ title: "评分拆解", value: lines, type: "breakdown" });
   }
-
-  Object.entries(typedEvidence).forEach(([key, value]) => {
-    if (key === "matched_words" || key === "amounts" || key === "score_breakdown") {
-      return;
-    }
-    if (typeof value === "string") {
-      sections.push({ title: key, value });
-    }
-  });
 
   return sections;
 }
 
+function ScoreBar({ score }: { score: number }) {
+  const clamped = Math.max(0, Math.min(100, score));
+  const level = clamped >= 70 ? "high" : clamped >= 40 ? "mid" : "low";
+  return (
+    <div className="score-bar-container">
+      <div className="score-bar">
+        <div className={`score-bar-fill score-${level}`} style={{ width: `${clamped}%` }} />
+      </div>
+      <span className="score-bar-value">{score}</span>
+    </div>
+  );
+}
+
+function ScoreBreakdownGrid({ evidence }: { evidence: Lead["evidence"] }) {
+  if (!evidence || typeof evidence !== "object") return null;
+  const typedEvidence = evidence as Record<string, unknown>;
+  const scoreBreakdown = typedEvidence.score_breakdown;
+  if (!scoreBreakdown || typeof scoreBreakdown !== "object") return null;
+
+  const breakdown = scoreBreakdown as Record<string, number>;
+  return (
+    <div className="score-breakdown-grid">
+      {Object.entries(breakdown).map(([key, val]) => (
+        <div key={key} className="score-breakdown-item">
+          <span>{DIMENSION_LABELS[key] || key}</span>
+          <span className={val > 0 ? "score-positive" : val < 0 ? "score-negative" : "score-zero"}>
+            {val > 0 ? "+" : ""}{val}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function platformBadgeClass(platform: string) {
+  return `platform-badge platform-${platform}`;
+}
+
 function StatusBadge({ status }: { status: string }) {
-  return <span className={`status-pill status-${status}`}>{status}</span>;
+  const label = LEAD_STATUS_LABELS[status] || status;
+  return <span className={`status-pill status-${status}`}>{label}</span>;
 }
 
 export default function LeadsPage() {
@@ -219,12 +296,14 @@ export default function LeadsPage() {
 
     try {
       await updateLeadStatus(lead.id, nextStatus);
+      showToast("success", "状态已更新", `线索 #${lead.id} 已更新为${LEAD_STATUS_LABELS[nextStatus] || nextStatus}`);
       await loadData(page, filters);
       if (detailLead?.id === lead.id) {
         setDetailLead({ ...lead, status: nextStatus });
       }
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "更新线索状态失败");
+      showToast("error", "更新失败", updateError instanceof Error ? updateError.message : "未知错误");
     } finally {
       setBusyId(null);
     }
@@ -246,8 +325,10 @@ export default function LeadsPage() {
         source_comment_id: filters.source_comment_id || undefined,
       });
       downloadBlob(blob, "leads.csv");
+      showToast("success", "导出成功", "CSV 文件已下载");
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "导出 CSV 失败");
+      showToast("error", "导出失败", exportError instanceof Error ? exportError.message : "未知错误");
     } finally {
       setExporting(false);
     }
@@ -273,10 +354,10 @@ export default function LeadsPage() {
 
       <section className="stats-grid">
         <div className="stat-card"><span>全部线索</span><strong>{statTotals.all}</strong></div>
-        <div className="stat-card"><span>A 级线索</span><strong>{statTotals.A}</strong></div>
-        <div className="stat-card"><span>B 级线索</span><strong>{statTotals.B}</strong></div>
-        <div className="stat-card"><span>C 级线索</span><strong>{statTotals.C}</strong></div>
-        <div className="stat-card"><span>D 级线索</span><strong>{statTotals.D}</strong></div>
+        <div className="stat-card"><span>A 级线索</span><strong style={{ color: "#dc2626" }}>{statTotals.A}</strong></div>
+        <div className="stat-card"><span>B 级线索</span><strong style={{ color: "#2563eb" }}>{statTotals.B}</strong></div>
+        <div className="stat-card"><span>C 级线索</span><strong style={{ color: "#ca8a04" }}>{statTotals.C}</strong></div>
+        <div className="stat-card"><span>D 级线索</span><strong style={{ color: "#6b7280" }}>{statTotals.D}</strong></div>
       </section>
 
       {activeSourcePostId ? (
@@ -299,9 +380,9 @@ export default function LeadsPage() {
             <p>按线索等级、需求类型、平台和状态筛选。</p>
           </div>
           <div className="action-row">
-            <button type="button" onClick={() => void applyFilters()} disabled={loading}>查询</button>
-            <button type="button" onClick={() => void resetFilters()} disabled={loading}>重置</button>
-            <button type="button" onClick={() => void handleExportCsv()} disabled={exporting}>
+            <button type="button" className="btn-primary" onClick={() => void applyFilters()} disabled={loading}>查询</button>
+            <button type="button" className="btn-secondary" onClick={() => void resetFilters()} disabled={loading}>重置</button>
+            <button type="button" className="btn-secondary" onClick={() => void handleExportCsv()} disabled={exporting}>
               {exporting ? "导出中..." : "导出 CSV"}
             </button>
           </div>
@@ -337,7 +418,7 @@ export default function LeadsPage() {
             <select value={filters.status ?? ""} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
               {STATUS_OPTIONS.map((option) => (
                 <option key={option || "all"} value={option}>
-                  {option || "全部"}
+                  {LEAD_STATUS_LABELS[option] || "全部"}
                 </option>
               ))}
             </select>
@@ -352,13 +433,19 @@ export default function LeadsPage() {
             <p>当前页共 {items.length} 条，总计 {total} 条。</p>
           </div>
           <div className="action-row">
-            <button type="button" onClick={() => void loadData(page, filters)} disabled={loading}>刷新列表</button>
-            <button type="button" onClick={() => void handlePrevPage()} disabled={loading || page <= 1}>上一页</button>
-            <button type="button" onClick={() => void handleNextPage()} disabled={loading || items.length < pageSize}>下一页</button>
+            <button type="button" className="btn-secondary" onClick={() => void loadData(page, filters)} disabled={loading}>刷新列表</button>
+            <button type="button" className="btn-secondary" onClick={() => void handlePrevPage()} disabled={loading || page <= 1}>上一页</button>
+            <button type="button" className="btn-secondary" onClick={() => void handleNextPage()} disabled={loading || items.length < pageSize}>下一页</button>
           </div>
         </div>
 
-        {loading ? <p className="state-text">加载中...</p> : null}
+        {loading ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="skeleton skeleton-card" />
+            ))}
+          </div>
+        ) : null}
         {error ? (
           <div className="state-panel state-error">
             <p>{error}</p>
@@ -376,14 +463,13 @@ export default function LeadsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>线索等级</th>
-                  <th>线索评分</th>
+                  <th>等级</th>
+                  <th>评分</th>
                   <th>需求类型</th>
                   <th>评论内容</th>
+                  <th>平台</th>
                   <th>来源帖子</th>
-                  <th>识别理由</th>
-                  <th>跟进话术</th>
-                  <th>风险等级</th>
+                  <th>风险</th>
                   <th>状态</th>
                   <th>操作</th>
                 </tr>
@@ -392,9 +478,10 @@ export default function LeadsPage() {
                 {items.map((lead) => (
                   <tr key={lead.id}>
                     <td><span className={`lead-level level-${lead.lead_level}`}>{lead.lead_level}</span></td>
-                    <td>{lead.lead_score}</td>
-                    <td>{lead.demand_type || "-"}</td>
-                    <td className="cell-break">{lead.content || "-"}</td>
+                    <td><ScoreBar score={lead.lead_score} /></td>
+                    <td>{lead.demand_type ? <span className="tag">{lead.demand_type}</span> : "-"}</td>
+                    <td className="cell-break">{truncate(lead.content, 40)}</td>
+                    <td><span className={platformBadgeClass(lead.platform)}>{PLATFORM_LABELS[lead.platform] || lead.platform}</span></td>
                     <td>
                       {lead.source_post_title ? (
                         <div className="source-post-cell">
@@ -410,21 +497,27 @@ export default function LeadsPage() {
                         <span className="text-muted">-</span>
                       )}
                     </td>
-                    <td className="cell-break">{lead.reason || "-"}</td>
-                    <td className="cell-break">{lead.follow_up_script || "-"}</td>
-                    <td>{lead.risk_level || "-"}</td>
+                    <td>
+                      {lead.risk_level === "high" ? (
+                        <span className="tag tag-danger">高</span>
+                      ) : lead.risk_level === "mid" ? (
+                        <span className="tag tag-warning">中</span>
+                      ) : lead.risk_level === "low" ? (
+                        <span className="tag tag-success">低</span>
+                      ) : "-"}
+                    </td>
                     <td>
                       <StatusBadge status={lead.status} />
                     </td>
                     <td>
                       <div className="lead-actions">
-                        <button type="button" onClick={() => void handleViewEvidence(lead)}>证据链</button>
+                        <button type="button" className="btn-sm" onClick={() => void handleViewEvidence(lead)}>证据链</button>
                         <select value={draftStatuses[lead.id] ?? lead.status} onChange={(event) => setDraftStatuses((current) => ({ ...current, [lead.id]: event.target.value }))}>
-                          {Object.keys(LEAD_STATUS_LABELS).map((status) => (
-                            <option key={status} value={status}>{status}</option>
+                          {Object.entries(LEAD_STATUS_LABELS).map(([status, label]) => (
+                            <option key={status} value={status}>{label}</option>
                           ))}
                         </select>
-                        <button type="button" onClick={() => void handleUpdateStatus(lead)} disabled={busyId === lead.id}>
+                        <button type="button" className="btn-sm" onClick={() => void handleUpdateStatus(lead)} disabled={busyId === lead.id}>
                           {busyId === lead.id ? "保存中..." : "保存"}
                         </button>
                       </div>
@@ -443,7 +536,9 @@ export default function LeadsPage() {
             <div className="modal-header">
               <div>
                 <h3>证据链</h3>
-                <p>线索 ID：{detailLead.id}，等级：{detailLead.lead_level}</p>
+                <p>
+                  线索 ID：{detailLead.id} · 等级：<span className={`lead-level level-${detailLead.lead_level}`}>{detailLead.lead_level}</span> · 评分：<strong>{detailLead.lead_score}</strong>
+                </p>
               </div>
               <button type="button" onClick={() => setDetailOpen(false)}>关闭</button>
             </div>
@@ -457,7 +552,24 @@ export default function LeadsPage() {
                   <div><span>评论内容</span><strong>{detailLead.content || "-"}</strong></div>
                   <div><span>识别理由</span><strong>{detailLead.reason || "-"}</strong></div>
                   <div><span>跟进话术</span><strong>{detailLead.follow_up_script || "-"}</strong></div>
-                  <div><span>风险等级</span><strong>{detailLead.risk_level || "-"}</strong></div>
+                  <div>
+                    <span>风险等级</span>
+                    <strong>
+                      {detailLead.risk_level === "high" ? (
+                        <span className="tag tag-danger">高风险</span>
+                      ) : detailLead.risk_level === "mid" ? (
+                        <span className="tag tag-warning">中风险</span>
+                      ) : detailLead.risk_level === "low" ? (
+                        <span className="tag tag-success">低风险</span>
+                      ) : "-"}
+                    </strong>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>评分概览</h4>
+                  <ScoreBar score={detailLead.lead_score} />
+                  <ScoreBreakdownGrid evidence={detailLead.evidence} />
                 </div>
 
                 {detailLead.source_post_title ? (
@@ -472,7 +584,7 @@ export default function LeadsPage() {
                       </strong></div>
                     </div>
                     <div className="action-row" style={{ marginTop: 8 }}>
-                      <button type="button" onClick={() => { setDetailOpen(false); handleGoToPost(detailLead); }}>在帖子池中查看</button>
+                      <button type="button" className="btn-sm" onClick={() => { setDetailOpen(false); handleGoToPost(detailLead); }}>在帖子池中查看</button>
                     </div>
                   </div>
                 ) : null}
@@ -482,7 +594,21 @@ export default function LeadsPage() {
                   {evidenceSections.length > 0 ? evidenceSections.map((section) => (
                     <section key={section.title} className="evidence-block">
                       <h4>{section.title}</h4>
-                      <pre>{section.value}</pre>
+                      {section.type === "warning" ? (
+                        <div className="evidence-warning">{section.value}</div>
+                      ) : section.type === "danger" ? (
+                        <div className="evidence-danger">{section.value}</div>
+                      ) : section.type === "tags" ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {section.value.split("、").map((word) => (
+                            <span key={word} className="tag">{word}</span>
+                          ))}
+                        </div>
+                      ) : section.type === "breakdown" ? (
+                        <ScoreBreakdownGrid evidence={detailLead.evidence} />
+                      ) : (
+                        <pre>{section.value}</pre>
+                      )}
                     </section>
                   )) : (
                     <div className="state-panel state-empty">

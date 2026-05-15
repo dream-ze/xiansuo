@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,9 +12,19 @@ from app.api.routes.daily_reports import router as daily_reports_router
 from app.api.routes.leads import router as leads_router
 from app.api.routes.monitor_sources import router as monitor_sources_router
 from app.api.routes.pending_competitors import router as pending_competitors_router
+from app.api.routes.scoring_rules import router as scoring_rules_router
 from app.api.routes.posts import router as posts_router
 
-app = FastAPI(title="Loan Radar Backend")
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    from app.services.crawl_scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="Loan Radar Backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -41,6 +53,7 @@ app.include_router(content_pools_router)
 app.include_router(crawl_tasks_router)
 app.include_router(monitor_sources_router)
 app.include_router(collectors_router)
+app.include_router(scoring_rules_router)
 
 
 @app.get("/health")

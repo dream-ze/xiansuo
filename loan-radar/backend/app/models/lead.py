@@ -1,10 +1,13 @@
-from sqlalchemy import Column, DateTime, Float, Integer, JSON, String, Text, func
+from sqlalchemy import Column, DateTime, Float, Integer, JSON, String, Text, UniqueConstraint, func
 
 from app.core.database import Base
 
 
 class Lead(Base):
     __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("platform", "source_comment_id", name="uq_leads_platform_comment"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     platform = Column(String(50), nullable=False, index=True)

@@ -13,6 +13,7 @@ class Comment(Base):
     platform = Column(String(50), nullable=False, index=True)
     post_id = Column(String(255), nullable=False, index=True)
     comment_id = Column(String(255), nullable=False, index=True)
+    content_hash = Column(String(32), nullable=True, index=True)
     user_name = Column(String(255), nullable=True, index=True)
     user_profile_url = Column(String(1000), nullable=True)
     content = Column(Text, nullable=True)

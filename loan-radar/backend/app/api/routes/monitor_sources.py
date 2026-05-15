@@ -18,7 +18,8 @@ from app.services.monitor_source_service import (
     toggle_monitor_source,
     update_monitor_source,
 )
-from app.services.crawl_pipeline_service import run_monitor_source_crawl
+from app.services.crawl_task_service import create_queued_crawl_task
+from app.services.task_queue import CrawlTaskQueue
 from app.schemas.crawl_task import CrawlTaskOut
 from app.utils.response import error_response, success_response
 
@@ -133,6 +134,15 @@ def update_monitor_source_endpoint(
     except ValueError as error:
         return validation_error_response(error)
 
+    from app.services.crawl_scheduler import add_source_schedule, remove_source_schedule
+    if updated_monitor_source.schedule_enabled and updated_monitor_source.schedule_cron:
+        try:
+            add_source_schedule(updated_monitor_source.id, updated_monitor_source.schedule_cron)
+        except ValueError:
+            pass
+    else:
+        remove_source_schedule(updated_monitor_source.id)
+
     data = MonitorSourceOut.model_validate(updated_monitor_source).model_dump(mode="json")
     return success_response(data)
 
@@ -161,9 +171,18 @@ def crawl_monitor_source_endpoint(
     if monitor_source is None:
         return not_found_response()
 
-    crawl_task = run_monitor_source_crawl(db, monitor_source)
+    crawl_task = create_queued_crawl_task(db, monitor_source)
+    queue = CrawlTaskQueue.get_instance()
+    position = queue.enqueue(crawl_task.id)
+
     data = CrawlTaskOut.model_validate(crawl_task).model_dump(mode="json")
-    return success_response(data)
+    return JSONResponse(
+        status_code=202,
+        content=success_response({
+            **data,
+            "queue_position": position,
+        }),
+    )
 
 
 @router.delete("/{monitor_source_id}")
@@ -175,5 +194,14 @@ def delete_monitor_source_endpoint(
     if monitor_source is None:
         return not_found_response()
 
+    from app.services.crawl_scheduler import remove_source_schedule
+    remove_source_schedule(monitor_source_id)
+
     delete_monitor_source(db, monitor_source)
     return success_response({"id": monitor_source_id})
+
+
+@router.get("/scheduler/status")
+def get_scheduler_status_endpoint():
+    from app.services.crawl_scheduler import get_scheduler_status
+    return success_response(get_scheduler_status())
