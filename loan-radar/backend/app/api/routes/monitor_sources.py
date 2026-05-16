@@ -50,15 +50,50 @@ def validation_error_response(error: ValueError) -> JSONResponse:
 
 @router.get("/media-crawler/health")
 def media_crawler_health_check():
-    from app.collectors.media_crawler.bridge import MediaCrawlerBridge
+    import os
     from app.collectors.media_crawler.mappers import SUPPORTED_PLATFORMS, PLATFORM_LABELS
 
+    mc_home = os.getenv("MEDIA_CRAWLER_HOME")
+    embedded_mode = bool(mc_home)
+
+    shared_db_info = None
+    try:
+        from app.collectors.media_crawler.shared_db_reader import is_shared_db_available, _get_raw_db_path
+        if is_shared_db_available():
+            shared_db_info = {
+                "available": True,
+                "path": _get_raw_db_path(),
+            }
+        else:
+            shared_db_info = {"available": False}
+    except Exception:
+        shared_db_info = {"available": False}
+
+    if embedded_mode:
+        from pathlib import Path
+        home_path = Path(mc_home) if mc_home else None
+        mc_available = home_path.is_dir() if home_path else False
+        status = "healthy" if mc_available else "misconfigured"
+        return success_response({
+            "status": status,
+            "mode": "embedded",
+            "media_crawler_home": mc_home,
+            "shared_db": shared_db_info,
+            "supported_platforms": [
+                {"value": p, "label": PLATFORM_LABELS.get(p, p)}
+                for p in sorted(SUPPORTED_PLATFORMS)
+            ],
+        })
+
+    from app.collectors.media_crawler.bridge import MediaCrawlerBridge
     bridge = MediaCrawlerBridge()
     is_healthy = bridge.health_check()
 
     return success_response({
         "status": "healthy" if is_healthy else "unreachable",
+        "mode": "http_bridge",
         "api_base_url": bridge.api_base_url,
+        "shared_db": shared_db_info,
         "supported_platforms": [
             {"value": p, "label": PLATFORM_LABELS.get(p, p)}
             for p in sorted(SUPPORTED_PLATFORMS)

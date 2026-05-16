@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/leads", tags=["leads"])
 
 class LeadStatusUpdate(BaseModel):
     status: str
+    notes: str | None = None
 
 
 def not_found_response() -> JSONResponse:
@@ -136,6 +137,8 @@ def update_lead_status_endpoint(
         return not_found_response()
 
     lead.status = payload.status
+    if payload.notes is not None:
+        lead.notes = payload.notes
     db.commit()
     db.refresh(lead)
 

@@ -12,7 +12,7 @@ import { showToast } from "../components/ToastContainer";
 
 const LEAD_LEVEL_OPTIONS = ["", "A", "B", "C", "D"];
 const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
-const STATUS_OPTIONS = ["", "new", "contacted", "invalid", "converted"];
+const STATUS_OPTIONS = ["", "new", "contacted", "interested", "invalid", "converted"];
 
 const PLATFORM_LABELS: Record<string, string> = {
   xhs: "小红书",
@@ -26,8 +26,9 @@ const PLATFORM_LABELS: Record<string, string> = {
 };
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
-  new: "新增",
-  contacted: "已联系",
+  new: "新线索",
+  contacted: "已跟进",
+  interested: "有意向",
   invalid: "无效",
   converted: "已转化",
 };
@@ -181,6 +182,7 @@ export default function LeadsPage() {
     };
   });
   const [draftStatuses, setDraftStatuses] = useState<Record<number, string>>({});
+  const [draftNotes, setDraftNotes] = useState<Record<number, string>>({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -235,6 +237,13 @@ export default function LeadsPage() {
         });
         return nextDrafts;
       });
+      setDraftNotes((current) => {
+        const nextNotes: Record<number, string> = {};
+        listResult.items.forEach((lead) => {
+          nextNotes[lead.id] = current[lead.id] ?? (lead.notes || "");
+        });
+        return nextNotes;
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "加载线索失败");
     } finally {
@@ -287,7 +296,8 @@ export default function LeadsPage() {
 
   async function handleUpdateStatus(lead: Lead) {
     const nextStatus = draftStatuses[lead.id] ?? lead.status;
-    if (nextStatus === lead.status) {
+    const nextNotes = draftNotes[lead.id] ?? lead.notes ?? "";
+    if (nextStatus === lead.status && nextNotes === (lead.notes || "")) {
       return;
     }
 
@@ -295,11 +305,11 @@ export default function LeadsPage() {
     setError(null);
 
     try {
-      await updateLeadStatus(lead.id, nextStatus);
+      await updateLeadStatus(lead.id, nextStatus, nextNotes || null);
       showToast("success", "状态已更新", `线索 #${lead.id} 已更新为${LEAD_STATUS_LABELS[nextStatus] || nextStatus}`);
       await loadData(page, filters);
       if (detailLead?.id === lead.id) {
-        setDetailLead({ ...lead, status: nextStatus });
+        setDetailLead({ ...lead, status: nextStatus, notes: nextNotes });
       }
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "更新线索状态失败");
@@ -471,6 +481,7 @@ export default function LeadsPage() {
                   <th>来源帖子</th>
                   <th>风险</th>
                   <th>状态</th>
+                  <th>备注</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -508,6 +519,15 @@ export default function LeadsPage() {
                     </td>
                     <td>
                       <StatusBadge status={lead.status} />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="notes-input"
+                        value={draftNotes[lead.id] ?? lead.notes ?? ""}
+                        onChange={(event) => setDraftNotes((current) => ({ ...current, [lead.id]: event.target.value }))}
+                        placeholder="添加备注"
+                      />
                     </td>
                     <td>
                       <div className="lead-actions">

@@ -9,6 +9,7 @@ from app.models.crawl_task import CrawlTask
 from app.models.daily_report import DailyReport
 from app.models.lead import Lead
 from app.models.monitor_source import MonitorSource
+from app.models.pending_competitor import PendingCompetitorAccount
 from app.models.post import Post
 
 # 用于 top_keywords 的常见贷款需求关键词
@@ -169,6 +170,11 @@ def generate_daily_report(db: Session, platform: str | None = None) -> DailyRepo
     content_suggestions = _build_content_suggestions(top_demands)
     follow_up_suggestions = _build_follow_up_suggestions(a_count, b_count, lead_count)
 
+    a_lead_details = _build_a_lead_details(leads)
+    typical_evidence = _build_typical_evidence(leads)
+    discovered_competitors = _build_discovered_competitors(db, platform)
+    tomorrow_suggestions = _build_tomorrow_suggestions(a_count, b_count, lead_count, top_demands)
+
     # 已有同日同平台报告则更新，否则新建
     existing = (
         db.query(DailyReport)
@@ -196,10 +202,101 @@ def generate_daily_report(db: Session, platform: str | None = None) -> DailyRepo
     report.content_suggestions = content_suggestions
     report.follow_up_suggestions = follow_up_suggestions
     report.risk_warnings = _RISK_WARNINGS
+    report.a_lead_details = a_lead_details
+    report.typical_evidence = typical_evidence
+    report.discovered_competitors = discovered_competitors
+    report.tomorrow_suggestions = tomorrow_suggestions
 
     db.commit()
     db.refresh(report)
     return report
+
+
+def _build_a_lead_details(leads: list) -> list[dict]:
+    a_leads = [l for l in leads if l.lead_level == "A"]
+    if not a_leads:
+        return []
+    return [
+        {
+            "id": l.id,
+            "platform": l.platform,
+            "user_name": l.user_name or "",
+            "content": (l.content or "")[:200],
+            "lead_score": l.lead_score,
+            "demand_type": l.demand_type or "",
+            "follow_up_script": l.follow_up_script or "",
+            "reason": l.reason or "",
+        }
+        for l in a_leads[:10]
+    ]
+
+
+def _build_typical_evidence(leads: list) -> list[dict]:
+    scored_leads = [l for l in leads if l.lead_level in ("A", "B") and l.evidence]
+    if not scored_leads:
+        return []
+    results = []
+    for l in scored_leads[:5]:
+        evidence = l.evidence if isinstance(l.evidence, dict) else {}
+        matched_words = evidence.get("matched_words", [])
+        amounts = evidence.get("amounts", [])
+        results.append({
+            "lead_id": l.id,
+            "platform": l.platform,
+            "content": (l.content or "")[:150],
+            "matched_words": matched_words,
+            "amounts": amounts,
+            "lead_level": l.lead_level,
+        })
+    return results
+
+
+def _build_discovered_competitors(db: Session, platform: str | None) -> list[dict]:
+    today = _today_utc()
+    query = db.query(PendingCompetitorAccount).filter(
+        func.date(PendingCompetitorAccount.created_at) == today
+    )
+    if platform:
+        query = query.filter(PendingCompetitorAccount.platform == platform)
+    competitors = query.order_by(PendingCompetitorAccount.competitor_score.desc()).limit(10).all()
+    return [
+        {
+            "id": c.id,
+            "platform": c.platform,
+            "account_name": c.account_name,
+            "competitor_score": c.competitor_score,
+            "status": c.status,
+            "discover_reason": c.discover_reason or "",
+        }
+        for c in competitors
+    ]
+
+
+def _build_tomorrow_suggestions(
+    a_count: int, b_count: int, lead_count: int, top_demands: list[dict]
+) -> list[str]:
+    suggestions = []
+
+    if a_count >= 3:
+        suggestions.append("A级线索充足，建议明天优先跟进A级客户，争取当天完成首次沟通和方案推荐。")
+    elif a_count > 0:
+        suggestions.append("有A级线索待跟进，建议明天上午完成A级线索的首次联系。")
+
+    if b_count >= 5:
+        suggestions.append("B级线索较多，建议通过产品介绍和测额工具筛选高意向客户。")
+
+    if lead_count == 0:
+        suggestions.append("今日无线索，建议检查监控关键词是否精准，或增加新的监控源扩大覆盖。")
+
+    for item in top_demands[:2]:
+        dt = item.get("demand_type", "")
+        if dt:
+            suggestions.append(f"关注「{dt}」类需求，建议明天发布相关内容吸引潜在客户。")
+
+    if not suggestions:
+        suggestions.append("保持当前监控策略，持续优化关键词和采集频率。")
+
+    return suggestions
 
 
 def get_today_report(db: Session, platform: str | None = None) -> DailyReport | None:

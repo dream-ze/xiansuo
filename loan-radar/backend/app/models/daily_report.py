@@ -23,6 +23,10 @@ class DailyReport(Base):
     content_suggestions = Column(JSON, nullable=True)
     follow_up_suggestions = Column(JSON, nullable=True)
     risk_warnings = Column(JSON, nullable=True)
+    a_lead_details = Column(JSON, nullable=True)
+    typical_evidence = Column(JSON, nullable=True)
+    discovered_competitors = Column(JSON, nullable=True)
+    tomorrow_suggestions = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

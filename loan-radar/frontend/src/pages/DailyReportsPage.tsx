@@ -195,6 +195,10 @@ export default function DailyReportsPage() {
   const contentSuggestions = parseJsonField<string[]>(report?.content_suggestions);
   const followUpSuggestions = parseJsonField<string[]>(report?.follow_up_suggestions);
   const riskWarnings = parseJsonField<string[]>(report?.risk_warnings);
+  const aLeadDetails = parseJsonField<Array<{ id: number; platform: string; user_name: string; content: string; lead_score: number; demand_type: string; follow_up_script: string; reason: string }>>(report?.a_lead_details);
+  const typicalEvidence = parseJsonField<Array<{ lead_id: number; platform: string; content: string; matched_words: string[]; amounts: string[]; lead_level: string }>>(report?.typical_evidence);
+  const discoveredCompetitors = parseJsonField<Array<{ id: number; platform: string; account_name: string; competitor_score: number; status: string; discover_reason: string }>>(report?.discovered_competitors);
+  const tomorrowSuggestions = parseJsonField<string[]>(report?.tomorrow_suggestions);
 
   return (
     <div className="page-container">
@@ -312,6 +316,85 @@ export default function DailyReportsPage() {
           <Section title="合规风险提醒">
             <StringList items={riskWarnings ?? []} />
           </Section>
+
+          {/* A级线索详情 */}
+          {aLeadDetails && aLeadDetails.length > 0 && (
+            <Section title="A级线索详情">
+              <div className="hot-post-list">
+                {aLeadDetails.map((lead, i) => (
+                  <div key={lead.id || i} className="hot-post-card">
+                    <div className="hot-post-header">
+                      <span className="hot-post-rank">#{i + 1}</span>
+                      <span className="badge">{lead.platform}</span>
+                      <span className="badge">评分: {lead.lead_score}</span>
+                    </div>
+                    {lead.user_name && <p className="hot-post-title">用户：{lead.user_name}</p>}
+                    <p className="hot-post-content">{lead.content}</p>
+                    {lead.demand_type && <p><strong>需求类型：</strong>{lead.demand_type}</p>}
+                    {lead.reason && <p><strong>判断理由：</strong>{lead.reason}</p>}
+                    {lead.follow_up_script && <p><strong>建议话术：</strong>{lead.follow_up_script}</p>}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* 典型证据 */}
+          {typicalEvidence && typicalEvidence.length > 0 && (
+            <Section title="典型证据">
+              <div className="hot-post-list">
+                {typicalEvidence.map((ev, i) => (
+                  <div key={ev.lead_id || i} className="hot-post-card">
+                    <div className="hot-post-header">
+                      <span className="hot-post-rank">#{i + 1}</span>
+                      <span className="badge">{ev.platform}</span>
+                      <span className={`badge ${ev.lead_level === 'A' ? 'badge-danger' : 'badge-warning'}`}>{ev.lead_level}级</span>
+                    </div>
+                    <p className="hot-post-content">{ev.content}</p>
+                    {ev.matched_words && ev.matched_words.length > 0 && (
+                      <div className="keyword-tags" style={{ marginTop: 4 }}>
+                        {ev.matched_words.map((w, j) => (
+                          <span key={j} className="keyword-tag">{w}</span>
+                        ))}
+                      </div>
+                    )}
+                    {ev.amounts && ev.amounts.length > 0 && (
+                      <p style={{ marginTop: 4, fontSize: 12, color: '#666' }}>金额：{ev.amounts.join(', ')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* 发现的同行账号 */}
+          {discoveredCompetitors && discoveredCompetitors.length > 0 && (
+            <Section title="发现的同行账号">
+              <div className="hot-post-list">
+                {discoveredCompetitors.map((comp, i) => (
+                  <div key={comp.id || i} className="hot-post-card">
+                    <div className="hot-post-header">
+                      <span className="hot-post-rank">#{i + 1}</span>
+                      <span className="badge">{comp.platform}</span>
+                      <span className="badge">评分: {comp.competitor_score}</span>
+                      <span className={`badge ${comp.status === 'approved' ? 'badge-success' : comp.status === 'ignored' ? 'badge-muted' : 'badge-warning'}`}>
+                        {comp.status === 'approved' ? '已通过' : comp.status === 'ignored' ? '已忽略' : '待审核'}
+                      </span>
+                    </div>
+                    <p className="hot-post-title">{comp.account_name}</p>
+                    {comp.discover_reason && <p className="hot-post-content">{comp.discover_reason}</p>}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* 明日建议 */}
+          {tomorrowSuggestions && tomorrowSuggestions.length > 0 && (
+            <Section title="明日建议">
+              <StringList items={tomorrowSuggestions} />
+            </Section>
+          )}
         </div>
       )}
     </div>

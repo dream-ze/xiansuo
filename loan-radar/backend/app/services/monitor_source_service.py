@@ -20,19 +20,20 @@ SOURCE_TYPE_ALIASES = {
 SUPPORTED_PLATFORMS = {
     "xhs",
     "douyin",
-    "kuaishou",
-    "bilibili",
-    "weibo",
-    "tieba",
     "zhihu",
-    "other",
+}
+
+MEDIA_CRAWLER_PLATFORMS = {
+    "xhs",
+    "douyin",
+    "zhihu",
 }
 
 
 def _collector_type(config) -> str:
     if isinstance(config, dict):
-        return str(config.get("collector_type", "mock"))
-    return "mock"
+        return str(config.get("collector_type", "media_crawler"))
+    return "media_crawler"
 
 
 def validate_source_type(source_type: str) -> None:
@@ -52,6 +53,15 @@ def validate_platform(platform: str) -> None:
         raise ValueError(f"unsupported platform: {platform}")
 
 
+def validate_platform_for_collector_type(platform: str, collector_type: str) -> None:
+    if collector_type == "media_crawler":
+        if platform not in MEDIA_CRAWLER_PLATFORMS:
+            raise ValueError(
+                f"collector_type=media_crawler 不支持平台 '{platform}'，"
+                f"仅支持：{', '.join(sorted(MEDIA_CRAWLER_PLATFORMS))}"
+            )
+
+
 def validate_monitor_source_payload(payload: MonitorSourceCreate | MonitorSourceUpdate) -> None:
     source_type = normalize_source_type(payload.source_type)
     platform = payload.platform
@@ -66,6 +76,9 @@ def validate_monitor_source_payload(payload: MonitorSourceCreate | MonitorSource
     is_valid, error_message = config_obj.validate_collector_type()
     if not is_valid:
         raise ValueError(error_message)
+
+    if platform is not None:
+        validate_platform_for_collector_type(platform, collector_type)
 
 
 def create_monitor_source(db: Session, payload: MonitorSourceCreate) -> MonitorSource:

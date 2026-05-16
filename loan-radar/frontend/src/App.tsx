@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/posts", label: "帖子" },
   { to: "/comments", label: "评论" },
   { to: "/leads", label: "线索" },
+  { to: "/pending-competitors", label: "同行发现" },
   { to: "/daily-reports", label: "日报" },
   { to: "/scoring-rules", label: "评分规则" },
 ];

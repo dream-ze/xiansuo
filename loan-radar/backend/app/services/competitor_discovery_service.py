@@ -195,7 +195,7 @@ class CompetitorDiscoveryService:
             platform=competitor.platform,
             name=competitor.account_name,
             value=competitor.profile_url,
-            config={"collector_type": "mock"},
+            config={"collector_type": "media_crawler"},
             enabled=True,
         )
         db.add(monitor_source)

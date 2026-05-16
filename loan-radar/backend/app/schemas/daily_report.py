@@ -24,5 +24,9 @@ class DailyReportOut(BaseModel):
     content_suggestions: Any | None = None
     follow_up_suggestions: Any | None = None
     risk_warnings: Any | None = None
+    a_lead_details: Any | None = None
+    typical_evidence: Any | None = None
+    discovered_competitors: Any | None = None
+    tomorrow_suggestions: Any | None = None
     created_at: datetime
     updated_at: datetime

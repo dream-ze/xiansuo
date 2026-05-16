@@ -25,5 +25,6 @@ class LeadOut(BaseModel):
     reason: str | None = None
     follow_up_script: str | None = None
     status: str
+    notes: str | None = None
     created_at: datetime
     updated_at: datetime

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.lead import Lead
 
-VALID_LEAD_STATUSES = {"new", "contacted", "invalid", "converted"}
+VALID_LEAD_STATUSES = {"new", "contacted", "interested", "invalid", "converted"}
 
 
 def build_leads_query(
@@ -67,6 +67,7 @@ def export_leads_csv(leads: list[Lead]) -> bytes:
             "风险提示",
             "来源平台",
             "状态",
+            "备注",
             "创建时间",
         ]
     )
@@ -83,6 +84,7 @@ def export_leads_csv(leads: list[Lead]) -> bytes:
                 lead.risk_level or "",
                 lead.platform,
                 lead.status,
+                lead.notes or "",
                 lead.created_at.strftime("%Y-%m-%d %H:%M:%S") if lead.created_at else "",
             ]
         )

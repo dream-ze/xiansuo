@@ -12,17 +12,63 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loan_radar"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  media-crawler:
-    image: nanmicoder/media-crawler:latest
-    container_name: loan-radar-media-crawler
+  mediacrawler:
+    build:
+      context: ./mediacrawler
+      dockerfile: Dockerfile
+    container_name: loan-radar-mediacrawler
     ports:
       - "8080:8080"
+    volumes:
+      - mediacrawler_data:/app/data
     environment:
-      MEDIA_CRAWLER_API_PORT: "8080"
-    restart: unless-stopped
-    profiles:
-      - media-crawler
+      SAVE_DATA_OPTION: sqlite
+      LOGIN_TYPE: cookie
+      ENABLE_CDP_MODE: "false"
+      HEADLESS: "true"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: loan-radar-backend
+    ports:
+      - "8001:8001"
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg2://loan_radar:loan_radar_password@postgres:5432/loan_radar
+      MEDIA_CRAWLER_API_URL: http://mediacrawler:8080
+      MEDIA_CRAWLER_RAW_DB_PATH: /shared/mediacrawler/raw_tasks.sqlite3
+    volumes:
+      - mediacrawler_data:/shared/mediacrawler:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mediacrawler:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: loan-radar-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
+  mediacrawler_data:

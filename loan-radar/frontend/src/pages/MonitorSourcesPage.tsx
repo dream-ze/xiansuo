@@ -18,12 +18,7 @@ import {
 const PLATFORM_OPTIONS = [
   { label: "小红书", value: "xhs" },
   { label: "抖音", value: "douyin" },
-  { label: "快手", value: "kuaishou" },
-  { label: "B站", value: "bilibili" },
-  { label: "微博", value: "weibo" },
-  { label: "贴吧", value: "tieba" },
   { label: "知乎", value: "zhihu" },
-  { label: "其他", value: "other" },
 ];
 
 const SOURCE_TYPE_OPTIONS = [
@@ -34,18 +29,14 @@ const SOURCE_TYPE_OPTIONS = [
 ];
 
 const COLLECTOR_TYPE_OPTIONS = [
-  { label: "mock：演示 / 回归测试", value: "mock" },
-  { label: "playwright：指定公开帖子链接", value: "playwright" },
-  { label: "media_crawler：多平台采集（小红书/抖音/快手/B站/微博/贴吧/知乎）", value: "media_crawler" },
-  { label: "external_api：外部采集 API", value: "external_api" },
-  { label: "generic_web：通用网页采集", value: "generic_web" },
+  { label: "media_crawler：多平台采集（小红书/抖音/知乎）", value: "media_crawler" },
 ];
 
 export const SOURCE_ALLOWED_COLLECTOR_TYPES: Record<string, string[]> = {
-  keyword: ["mock", "media_crawler", "external_api"],
-  competitor_account: ["mock", "media_crawler", "external_api"],
-  manual_post: ["playwright", "media_crawler", "generic_web"],
-  hot_post_rule: ["mock", "media_crawler"],
+  keyword: ["media_crawler"],
+  competitor_account: ["media_crawler"],
+  manual_post: ["media_crawler"],
+  hot_post_rule: ["media_crawler"],
 };
 
 export function getAllowedCollectorTypesBySourceType(sourceType: string): string[] {
@@ -53,21 +44,6 @@ export function getAllowedCollectorTypesBySourceType(sourceType: string): string
 }
 
 export function getDynamicFieldKeysByCollectorType(collectorType: string): string[] {
-  if (collectorType === "external_api") {
-    return ["entry_url", "endpoint", "api_key_env", "max_posts", "max_comments_per_post"];
-  }
-  if (collectorType === "generic_web") {
-    return [
-      "entry_url",
-      "selectors.post_container",
-      "selectors.title",
-      "selectors.content",
-      "selectors.author",
-      "selectors.comment_item",
-      "max_posts",
-      "max_comments_per_post",
-    ];
-  }
   if (collectorType === "media_crawler") {
     return [
       "login_type",
@@ -111,17 +87,9 @@ export type CreateFormState = {
   enabled: boolean;
   schedule_enabled: boolean;
   schedule_cron: string;
-  entry_url: string;
-  endpoint: string;
-  api_key_env: string;
   cookies: string;
   login_type: string;
   enable_comments: boolean;
-  selector_post_container: string;
-  selector_title: string;
-  selector_content: string;
-  selector_author: string;
-  selector_comment_item: string;
 };
 
 export const DEFAULT_CREATE_FORM: CreateFormState = {
@@ -135,17 +103,9 @@ export const DEFAULT_CREATE_FORM: CreateFormState = {
   enabled: true,
   schedule_enabled: false,
   schedule_cron: "0 */2 * * *",
-  entry_url: "",
-  endpoint: "",
-  api_key_env: "",
   cookies: "",
   login_type: "qrcode",
   enable_comments: true,
-  selector_post_container: "",
-  selector_title: "",
-  selector_content: "",
-  selector_author: "",
-  selector_comment_item: "",
 };
 
 function toPositiveInteger(value: string, fieldName: string): number {
@@ -156,10 +116,6 @@ function toPositiveInteger(value: string, fieldName: string): number {
   return parsed;
 }
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//.test(value);
-}
-
 export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreatePayload {
   const sourceType = form.source_type;
   const collectorType = form.collector_type;
@@ -167,22 +123,7 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
   const maxCommentsPerPost = toPositiveInteger(form.max_comments_per_post, "max_comments_per_post");
 
   const payloadValue = form.value.trim();
-  const entryUrl = form.entry_url.trim();
-  const endpoint = form.endpoint.trim();
-  const apiKeyEnv = form.api_key_env.trim();
   const cookies = form.cookies.trim();
-
-  if (sourceType === "manual_post" && collectorType === "playwright" && !isHttpUrl(payloadValue)) {
-    throw new Error("manual_post + playwright 时，value 必须是 http/https URL");
-  }
-
-  if (collectorType === "generic_web" && !entryUrl && !payloadValue) {
-    throw new Error("generic_web 必须填写 entry_url 或 value");
-  }
-
-  if (collectorType === "external_api" && !endpoint) {
-    throw new Error("external_api 必须填写 endpoint");
-  }
 
   if (collectorType === "media_crawler") {
     const validLoginTypes = ["cookie", "qrcode", "phone"];
@@ -196,27 +137,6 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
     max_posts: maxPosts,
     max_comments_per_post: maxCommentsPerPost,
   };
-
-  if (collectorType === "external_api") {
-    config.external_api = {
-      endpoint,
-      ...(apiKeyEnv ? { api_key_env: apiKeyEnv } : {}),
-    };
-  }
-
-  if (collectorType === "generic_web") {
-    const selectors: Record<string, string> = {};
-    if (form.selector_post_container.trim()) selectors.post_container = form.selector_post_container.trim();
-    if (form.selector_title.trim()) selectors.title = form.selector_title.trim();
-    if (form.selector_content.trim()) selectors.content = form.selector_content.trim();
-    if (form.selector_author.trim()) selectors.author = form.selector_author.trim();
-    if (form.selector_comment_item.trim()) selectors.comment_item = form.selector_comment_item.trim();
-
-    config.entry_url = entryUrl || payloadValue;
-    if (Object.keys(selectors).length > 0) {
-      config.selectors = selectors;
-    }
-  }
 
   if (collectorType === "media_crawler") {
     config.login_type = form.login_type || "qrcode";
@@ -481,7 +401,13 @@ export default function MonitorSourcesPage() {
       <section className="card">
         <div className="card-header">
           <h2>新增监控源</h2>
-          <p>根据 source_type 选择可用 collector_type，并填写对应配置。</p>
+          <p>当前采集依赖 MediaCrawler API 服务，请确保服务已启动。支持平台：小红书、抖音、知乎。</p>
+        </div>
+        <div className="state-panel state-empty" style={{ marginBottom: "12px" }}>
+          <p>⚠️ 采集功能依赖 MediaCrawler。支持两种模式：<br/>
+          · <strong>内嵌模式</strong>：设置环境变量 <code>MEDIA_CRAWLER_HOME</code> 指向 MediaCrawler 目录，无需单独启动服务<br/>
+          · <strong>HTTP 模式</strong>：启动 MediaCrawler API 服务（默认 http://127.0.0.1:8080）<br/>
+          可通过 <code>/api/monitor-sources/media-crawler/health</code> 检查当前模式和服务状态。</p>
         </div>
         <form className="form-grid" onSubmit={handleCreate}>
           <label>
@@ -523,7 +449,7 @@ export default function MonitorSourcesPage() {
             <input
               value={createForm.value}
               onChange={(event) => setCreateForm((current) => ({ ...current, value: event.target.value }))}
-              placeholder={createForm.source_type === "manual_post" ? "公开帖子链接，例如：https://..." : "关键词/账号链接/规则内容"}
+              placeholder={createForm.source_type === "manual_post" ? "帖子链接，例如：https://..." : "关键词/账号链接/规则内容"}
             />
           </label>
           <label>
@@ -539,83 +465,6 @@ export default function MonitorSourcesPage() {
               ))}
             </select>
           </label>
-
-          {(selectedCollectorType === "external_api" || selectedCollectorType === "generic_web") && (
-            <label>
-              <span>entry_url</span>
-              <input
-                value={createForm.entry_url}
-                onChange={(event) => setCreateForm((current) => ({ ...current, entry_url: event.target.value }))}
-                placeholder="https://example.com/..."
-              />
-            </label>
-          )}
-
-          {selectedCollectorType === "external_api" && (
-            <>
-              <label>
-                <span>endpoint</span>
-                <input
-                  value={createForm.endpoint}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, endpoint: event.target.value }))}
-                  placeholder="https://your-api.example.com/collect"
-                />
-              </label>
-              <label>
-                <span>api_key_env</span>
-                <input
-                  value={createForm.api_key_env}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, api_key_env: event.target.value }))}
-                  placeholder="EXTERNAL_COLLECTOR_API_KEY"
-                />
-              </label>
-            </>
-          )}
-
-          {selectedCollectorType === "generic_web" && (
-            <>
-              <label>
-                <span>selectors.post_container</span>
-                <input
-                  value={createForm.selector_post_container}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_post_container: event.target.value }))}
-                  placeholder="article, .post"
-                />
-              </label>
-              <label>
-                <span>selectors.title</span>
-                <input
-                  value={createForm.selector_title}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_title: event.target.value }))}
-                  placeholder="h1, h2"
-                />
-              </label>
-              <label>
-                <span>selectors.content</span>
-                <input
-                  value={createForm.selector_content}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_content: event.target.value }))}
-                  placeholder="article, .content"
-                />
-              </label>
-              <label>
-                <span>selectors.author</span>
-                <input
-                  value={createForm.selector_author}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_author: event.target.value }))}
-                  placeholder=".author"
-                />
-              </label>
-              <label>
-                <span>selectors.comment_item</span>
-                <input
-                  value={createForm.selector_comment_item}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, selector_comment_item: event.target.value }))}
-                  placeholder=".comment"
-                />
-              </label>
-            </>
-          )}
 
           {selectedCollectorType === "media_crawler" && (
             <>
@@ -640,7 +489,7 @@ export default function MonitorSourcesPage() {
                 />
                 <small className="field-hint">
                   扫码登录无需填写 Cookie，采集时会弹出浏览器窗口扫码。Cookie 登录需填写目标平台的 Cookie。
-                  支持小红书、抖音、快手、B站、微博、贴吧、知乎。
+                  支持小红书、抖音、知乎。
                 </small>
               </label>
               <label>

@@ -15,3 +15,23 @@ Thumbs.db
 *.log
 
 .browser_state/
+
+# MediaCrawler - 忽略运行时和大文件目录
+mediacrawler/.git/
+mediacrawler/.venv/
+mediacrawler/.pytest_cache/
+mediacrawler/__pycache__/
+mediacrawler/**/__pycache__/
+mediacrawler/data/
+mediacrawler/browser_data/
+mediacrawler/.env
+mediacrawler/uv.lock
+mediacrawler/docs/
+mediacrawler/.github/
+mediacrawler/test/
+mediacrawler/tests/
+mediacrawler/node_modules/
+mediacrawler/package-lock.json
+mediacrawler/.pre-commit-config.yaml
+mediacrawler/.python-version
+mediacrawler/mypy.ini

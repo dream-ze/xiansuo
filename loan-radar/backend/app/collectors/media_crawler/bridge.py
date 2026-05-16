@@ -64,6 +64,12 @@ class MediaCrawlerBridge:
 
     def health_check(self) -> bool:
         try:
+            from app.collectors.media_crawler.shared_db_reader import is_shared_db_available
+            if is_shared_db_available():
+                return True
+        except Exception:
+            pass
+        try:
             resp = httpx.get(
                 f"{self.api_base_url}/api/health",
                 timeout=10,
@@ -171,16 +177,18 @@ class MediaCrawlerBridge:
             raise CollectionRequestError("MediaCrawler 服务无法连接") from error
 
     def wait_for_task_result(self, task_id: int, platform: str) -> dict[str, Any]:
+        if self._try_shared_db_result(task_id, platform):
+            return self._try_shared_db_result(task_id, platform)
+
         for _ in range(self.MAX_POLL_ATTEMPTS):
             task = self.get_task(task_id)
             status = task.get("status")
             if status == "success":
-                posts = self.list_raw_posts(task_id).get("items", [])
-                comments = self.list_raw_comments(task_id).get("items", [])
+                posts, comments = self._read_task_data(task_id, platform)
                 return {
                     "platform": platform,
-                    "posts": [_raw_item_payload(item) for item in posts],
-                    "comments": [_raw_item_payload(item) for item in comments],
+                    "posts": posts,
+                    "comments": comments,
                 }
             if status == "failed":
                 raise CollectionRequestError(
@@ -189,6 +197,37 @@ class MediaCrawlerBridge:
             time.sleep(self.POLL_INTERVAL)
 
         raise CollectionRequestError(f"MediaCrawler 任务超时: task_id={task_id}")
+
+    def _try_shared_db_result(self, task_id: int, platform: str) -> dict[str, Any] | None:
+        try:
+            from app.collectors.media_crawler.shared_db_reader import SharedRawTaskReader
+            reader = SharedRawTaskReader()
+            task = reader.get_task(task_id)
+            if task is None:
+                return None
+            if task.get("status") == "success":
+                posts_data = reader.list_raw_posts(task_id, page=1, page_size=500)
+                comments_data = reader.list_raw_comments(task_id, page=1, page_size=500)
+                posts = [_raw_item_payload(item) for item in posts_data.get("items", [])]
+                comments = [_raw_item_payload(item) for item in comments_data.get("items", [])]
+                return {
+                    "platform": platform,
+                    "posts": posts,
+                    "comments": comments,
+                }
+        except Exception:
+            pass
+        return None
+
+    def _read_task_data(self, task_id: int, platform: str) -> tuple[list[dict], list[dict]]:
+        try:
+            posts_resp = self.list_raw_posts(task_id)
+            comments_resp = self.list_raw_comments(task_id)
+            posts = [_raw_item_payload(item) for item in posts_resp.get("items", [])]
+            comments = [_raw_item_payload(item) for item in comments_resp.get("items", [])]
+            return posts, comments
+        except Exception:
+            return [], []
 
     def start_crawl(
         self,

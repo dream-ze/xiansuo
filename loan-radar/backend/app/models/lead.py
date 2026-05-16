@@ -25,6 +25,7 @@ class Lead(Base):
     reason = Column(Text, nullable=True)
     follow_up_script = Column(Text, nullable=True)
     status = Column(String(50), nullable=False, default="new", index=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

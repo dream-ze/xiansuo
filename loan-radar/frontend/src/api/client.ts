@@ -115,6 +115,7 @@ export type Lead = {
   reason: string | null;
   follow_up_script: string | null;
   status: string;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -142,6 +143,7 @@ export type LeadQueryParams = {
 
 export type LeadStatusUpdatePayload = {
   status: string;
+  notes?: string | null;
 };
 
 export type Post = {
@@ -270,6 +272,10 @@ export type DailyReport = {
   content_suggestions: unknown;
   follow_up_suggestions: unknown;
   risk_warnings: unknown;
+  a_lead_details: unknown;
+  typical_evidence: unknown;
+  discovered_competitors: unknown;
+  tomorrow_suggestions: unknown;
   created_at: string;
   updated_at: string;
 };
@@ -489,10 +495,10 @@ export function ignorePendingCompetitor(id: number) {
   });
 }
 
-export function updateLeadStatus(id: number, status: string) {
+export function updateLeadStatus(id: number, status: string, notes?: string | null) {
   return requestJson<Lead>(`/api/leads/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status } satisfies LeadStatusUpdatePayload),
+    body: JSON.stringify({ status, notes } satisfies LeadStatusUpdatePayload),
   });
 }
 

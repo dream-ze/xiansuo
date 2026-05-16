@@ -1,4 +1,4 @@
-# 线索雷达开发任务清单
+# 助贷线索雷达开发任务清单
 
 ## P0 已完成主链路
 
@@ -22,17 +22,24 @@
 - [x] 前端导航精简与全局优化
 - [x] API.md 补全缺失接口和字段文档
 - [x] DB_DESIGN.md 补充 crawl_tasks 新增字段和平台枚举说明
-- [x] PRD.md 更新为 MediaCrawler 单一采集器架构
-- [x] DEMO_FLOW.md 更新为 MediaCrawler 演示流程
-- [x] README.md 更新移除过时采集器描述和 XHS CDP 说明
 
-## P1 当前任务：阻塞修复与功能补全
+## P1 已完成：MVP 产品化增强
 
-- [ ] 恢复 smoke_test 可运行状态（当前依赖 mock/playwright 但 Factory 不支持）
-- [ ] 前端 MonitorSourcesPage 默认 collector_type 改为 media_crawler（当前默认 mock 会触发采集失败）
-- [ ] PendingCompetitorsPage 挂载路由，同行审核功能可达
-- [ ] 前端监控源页移除不可用的 playwright/external_api/generic_web 选项
-- [ ] 平台枚举两层不一致修复：创建监控源时校验平台是否可被当前采集器支持
+- [x] 前端 MonitorSourcesPage 默认 collector_type 改为 media_crawler
+- [x] 前端移除不可用的 playwright/external_api/generic_web/mock 选项
+- [x] 前端平台选项仅展示 xhs/douyin/zhihu
+- [x] 创建监控源时增加 MediaCrawler API 依赖提示
+- [x] 后端创建监控源时校验平台与 collector_type 兼容性（media_crawler 仅允许 xhs/douyin/zhihu）
+- [x] PendingCompetitorsPage 挂载路由，导航栏增加"同行发现"
+- [x] 线索状态流转增强：new → contacted → interested → invalid/converted
+- [x] 线索增加备注字段（notes）
+- [x] 线索表格增加备注输入列
+- [x] CSV 导出增加备注列
+- [x] 今日报告增强：A级线索详情、典型证据、建议跟进话术、发现的同行账号、明日建议
+- [x] 前端日报页面展示新增板块
+- [x] MediaCrawler Smoke Test（media_crawler_smoke_test.py）
+- [x] 数据库迁移：leads.notes + daily_reports 新增字段
+- [x] PRD/DEMO_FLOW/TASK_BACKLOG/README 更新
 
 ## P2 下一步：稳定性与清理
 
@@ -42,6 +49,9 @@
 - [ ] 增加真实采集测试页面或本地 HTML fixture
 - [ ] smoke_test 新增 pending competitors 审核步骤
 - [ ] CODEX_TASK_RULES.md 审核并更新过时规则
+- [ ] 线索详情弹窗展示完整证据链（命中关键词、金额、判断理由）
+- [ ] 线索批量操作（批量标记状态、批量导出）
+- [ ] 日报 PDF 导出
 
 ## P3 后续：扩展能力
 
@@ -54,6 +64,8 @@
 - [ ] 测试 API Key 不泄漏
 - [ ] 定时采集调度
 - [ ] 异步采集队列
+- [ ] 线索自动分配和跟进提醒
+- [ ] 多租户和基础权限
 
 ## 暂缓
 
