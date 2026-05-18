@@ -102,7 +102,7 @@ export default function CommentsPage() {
       <header className="page-header">
         <div>
           <p className="page-eyebrow">评论池</p>
-          <h1>智获客雷达</h1>
+          <h1>评论池</h1>
           <p className="page-description">查看评论池并按平台、需求类型、风险等级、疑似需求筛选。</p>
         </div>
       </header>

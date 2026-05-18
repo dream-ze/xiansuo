@@ -46,6 +46,7 @@ export default function CrmDashboardPage() {
         <div className="action-row">
           <Link className="btn-secondary" to="/crm/customers">客户档案</Link>
           <Link className="btn-secondary" to="/crm/tasks">任务提醒</Link>
+          <Link className="btn-secondary" to="/crm/opportunities">销售漏斗</Link>
         </div>
       </header>
 

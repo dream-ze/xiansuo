@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
@@ -16,34 +16,52 @@ from app.utils.response import success_response
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+def _count_today(db: Session, model, today):
+    return db.query(func.count(model.id)).filter(
+        func.date(model.created_at) == today
+    ).scalar() or 0
+
+
+def _count_total(db: Session, model, extra_filters=None):
+    q = db.query(func.count(model.id))
+    if extra_filters:
+        for f in extra_filters:
+            q = q.filter(f)
+    return q.scalar() or 0
+
+
 @router.get("/stats")
 def get_dashboard_stats(db: Session = Depends(get_db)):
     today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
 
     source_count = db.query(func.count(MonitorSource.id)).filter(
         MonitorSource.enabled == True
     ).scalar() or 0
 
-    task_count = db.query(func.count(CrawlTask.id)).filter(
-        func.date(CrawlTask.created_at) == today
-    ).scalar() or 0
-
-    post_count = db.query(func.count(Post.id)).filter(
-        func.date(Post.created_at) == today
-    ).scalar() or 0
-
-    comment_count = db.query(func.count(Comment.id)).filter(
-        func.date(Comment.created_at) == today
-    ).scalar() or 0
-
-    lead_count = db.query(func.count(Lead.id)).filter(
-        func.date(Lead.created_at) == today
-    ).scalar() or 0
-
-    a_lead_count = db.query(func.count(Lead.id)).filter(
+    today_task_count = _count_today(db, CrawlTask, today)
+    today_post_count = _count_today(db, Post, today)
+    today_comment_count = _count_today(db, Comment, today)
+    today_lead_count = _count_today(db, Lead, today)
+    today_a_lead_count = db.query(func.count(Lead.id)).filter(
         func.date(Lead.created_at) == today,
         Lead.lead_level == "A",
     ).scalar() or 0
+
+    total_task_count = _count_total(db, CrawlTask)
+    total_post_count = _count_total(db, Post)
+    total_comment_count = _count_total(db, Comment)
+    total_lead_count = _count_total(db, Lead)
+    total_a_lead_count = _count_total(db, Lead, [Lead.lead_level == "A"])
+
+    yesterday_lead_count = db.query(func.count(Lead.id)).filter(
+        func.date(Lead.created_at) == yesterday,
+    ).scalar() or 0
+    yesterday_a_lead_count = db.query(func.count(Lead.id)).filter(
+        func.date(Lead.created_at) == yesterday,
+        Lead.lead_level == "A",
+    ).scalar() or 0
+    yesterday_post_count = _count_today(db, Post, yesterday)
 
     pending_competitor_count = db.query(func.count(PendingCompetitorAccount.id)).filter(
         PendingCompetitorAccount.status == "pending",
@@ -96,11 +114,19 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     return success_response({
         "source_count": source_count,
-        "task_count": task_count,
-        "post_count": post_count,
-        "comment_count": comment_count,
-        "lead_count": lead_count,
-        "a_lead_count": a_lead_count,
+        "today_task_count": today_task_count,
+        "today_post_count": today_post_count,
+        "today_comment_count": today_comment_count,
+        "today_lead_count": today_lead_count,
+        "today_a_lead_count": today_a_lead_count,
+        "total_task_count": total_task_count,
+        "total_post_count": total_post_count,
+        "total_comment_count": total_comment_count,
+        "total_lead_count": total_lead_count,
+        "total_a_lead_count": total_a_lead_count,
+        "yesterday_lead_count": yesterday_lead_count,
+        "yesterday_a_lead_count": yesterday_a_lead_count,
+        "yesterday_post_count": yesterday_post_count,
         "pending_competitor_count": pending_competitor_count,
         "recent_a_leads": a_leads_data,
         "recent_tasks": tasks_data,

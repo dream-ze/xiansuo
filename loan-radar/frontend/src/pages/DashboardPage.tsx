@@ -49,6 +49,18 @@ function statusPillClass(status: string) {
   return `status-pill status-${status}`;
 }
 
+function VsYesterday({ today, yesterday }: { today: number; yesterday: number }) {
+  if (yesterday === 0 && today === 0) return <span className="cockpit-vs-neutral">-</span>;
+  if (yesterday === 0) return <span className="cockpit-vs-up">↑ 新增</span>;
+  const diff = today - yesterday;
+  const pct = Math.round((diff / yesterday) * 100);
+  if (diff > 0) return <span className="cockpit-vs-up">↑ +{pct}%</span>;
+  if (diff < 0) return <span className="cockpit-vs-down">↓ {pct}%</span>;
+  return <span className="cockpit-vs-neutral">→ 持平</span>;
+}
+
+type DataMode = "today" | "total";
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [mcHealth, setMcHealth] = useState<MediaCrawlerHealth | null>(null);
@@ -57,6 +69,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
+  const [dataMode, setDataMode] = useState<DataMode>("today");
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const navigate = useNavigate();
 
   const notifiedStatusRef = useRef<Map<number, string>>(new Map());
@@ -71,6 +85,7 @@ export default function DashboardPage() {
       setStats(dashboardData);
       setMcHealth(healthData);
       setQueueStatus(queueData);
+      setLastRefresh(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载数据失败");
     } finally {
@@ -88,6 +103,7 @@ export default function DashboardPage() {
         try {
           const data = await getDashboardStats();
           setStats(data);
+          setLastRefresh(new Date());
 
           const notified = notifiedStatusRef.current;
           for (const task of data.recent_tasks) {
@@ -107,7 +123,7 @@ export default function DashboardPage() {
           if (q) setQueueStatus(q);
         } catch {}
       })();
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -145,7 +161,13 @@ export default function DashboardPage() {
 
   const mcIsDown = mcHealth && mcHealth.status !== "healthy";
 
-  const isEmpty = stats && stats.lead_count === 0 && stats.post_count === 0 && stats.comment_count === 0 && stats.task_count === 0;
+  const isSystemEmpty = stats && stats.total_lead_count === 0 && stats.total_post_count === 0 && stats.total_comment_count === 0 && stats.total_task_count === 0;
+
+  const displayTaskCount = dataMode === "today" ? stats?.today_task_count : stats?.total_task_count;
+  const displayPostCount = dataMode === "today" ? stats?.today_post_count : stats?.total_post_count;
+  const displayCommentCount = dataMode === "today" ? stats?.today_comment_count : stats?.total_comment_count;
+  const displayLeadCount = dataMode === "today" ? stats?.today_lead_count : stats?.total_lead_count;
+  const displayALeadCount = dataMode === "today" ? stats?.today_a_lead_count : stats?.total_a_lead_count;
 
   return (
     <main className="page-shell">
@@ -153,7 +175,31 @@ export default function DashboardPage() {
         <div>
           <p className="page-eyebrow">Customer Acquisition Cockpit</p>
           <h1>获客驾驶舱</h1>
-          <p className="page-description">实时掌握今日获客数据，快速驱动业务动作。</p>
+          <p className="page-description">实时掌握获客数据，快速驱动业务动作。</p>
+        </div>
+        <div className="cockpit-header-actions">
+          <div className="cockpit-mode-toggle">
+            <button
+              type="button"
+              className={dataMode === "today" ? "cockpit-mode-btn active" : "cockpit-mode-btn"}
+              onClick={() => setDataMode("today")}
+            >
+              今日
+            </button>
+            <button
+              type="button"
+              className={dataMode === "total" ? "cockpit-mode-btn active" : "cockpit-mode-btn"}
+              onClick={() => setDataMode("total")}
+            >
+              累计
+            </button>
+          </div>
+          {lastRefresh && (
+            <span className="cockpit-refresh-info">
+              更新于 {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+              <button type="button" className="cockpit-refresh-btn" onClick={() => void loadAll()} title="刷新">↻</button>
+            </span>
+          )}
         </div>
       </header>
 
@@ -164,7 +210,7 @@ export default function DashboardPage() {
             <strong>MediaCrawler 未连接</strong>
             <p>当前采集引擎{mcHealth.mode === "embedded" ? "（内嵌模式）" : "（HTTP 桥接模式）"}不可用，实时采集功能受限。请检查服务状态或使用演示模式。</p>
           </div>
-          <Link to="/monitor-sources" className="btn btn-secondary" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>检查配置</Link>
+          <Link to="/collection" className="btn btn-secondary" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>检查配置</Link>
         </div>
       )}
 
@@ -210,28 +256,31 @@ export default function DashboardPage() {
             </div>
             <div className="cockpit-metric-card">
               <span className="cockpit-metric-label">采集任务</span>
-              <strong className="cockpit-metric-value">{stats.task_count}</strong>
+              <strong className="cockpit-metric-value">{displayTaskCount}</strong>
               <span className="cockpit-metric-unit">个</span>
             </div>
             <div className="cockpit-metric-card">
               <span className="cockpit-metric-label">帖子</span>
-              <strong className="cockpit-metric-value">{stats.post_count}</strong>
+              <strong className="cockpit-metric-value">{displayPostCount}</strong>
               <span className="cockpit-metric-unit">条</span>
+              {dataMode === "today" && <VsYesterday today={stats.today_post_count} yesterday={stats.yesterday_post_count} />}
             </div>
             <div className="cockpit-metric-card">
               <span className="cockpit-metric-label">评论</span>
-              <strong className="cockpit-metric-value">{stats.comment_count}</strong>
+              <strong className="cockpit-metric-value">{displayCommentCount}</strong>
               <span className="cockpit-metric-unit">条</span>
             </div>
             <div className="cockpit-metric-card">
               <span className="cockpit-metric-label">线索</span>
-              <strong className="cockpit-metric-value">{stats.lead_count}</strong>
+              <strong className="cockpit-metric-value">{displayLeadCount}</strong>
               <span className="cockpit-metric-unit">条</span>
+              {dataMode === "today" && <VsYesterday today={stats.today_lead_count} yesterday={stats.yesterday_lead_count} />}
             </div>
             <div className="cockpit-metric-card cockpit-metric-highlight">
               <span className="cockpit-metric-label">A级线索</span>
-              <strong className="cockpit-metric-value">{stats.a_lead_count}</strong>
+              <strong className="cockpit-metric-value">{displayALeadCount}</strong>
               <span className="cockpit-metric-unit">条</span>
+              {dataMode === "today" && <VsYesterday today={stats.today_a_lead_count} yesterday={stats.yesterday_a_lead_count} />}
             </div>
             <div className="cockpit-metric-card cockpit-metric-warning">
               <span className="cockpit-metric-label">待审核同行</span>
@@ -240,14 +289,14 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {isEmpty && (
+          {isSystemEmpty && (
             <div className="cockpit-empty-guide">
               <div className="cockpit-empty-icon">📡</div>
               <h3>尚未开始采集</h3>
-              <p>当前没有今日数据。创建监控源并启动采集，系统将自动识别线索。</p>
+              <p>系统暂无数据。创建监控源并启动采集，系统将自动识别线索。</p>
               <div className="cockpit-empty-actions">
-                <Link to="/monitor-sources" className="btn btn-primary">新建监控源</Link>
-                <Link to="/crawl-tasks" className="btn btn-secondary">查看采集任务</Link>
+                <Link to="/collection" className="btn btn-primary">新建监控源</Link>
+                <Link to="/collection" className="btn btn-secondary">查看采集任务</Link>
               </div>
             </div>
           )}
@@ -293,7 +342,7 @@ export default function DashboardPage() {
             <section className="cockpit-panel">
               <div className="cockpit-panel-header">
                 <h2>⚙️ 采集任务状态</h2>
-                <Link to="/crawl-tasks">查看全部</Link>
+                <Link to="/collection">查看全部</Link>
               </div>
               {stats.recent_tasks.length === 0 ? (
                 <div className="cockpit-panel-empty">
@@ -303,7 +352,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="cockpit-task-list">
                   {stats.recent_tasks.map((task) => (
-                    <Link key={task.id} to="/crawl-tasks" className="cockpit-task-item" style={{ textDecoration: "none", color: "inherit" }}>
+                    <Link key={task.id} to="/collection" className="cockpit-task-item" style={{ textDecoration: "none", color: "inherit" }}>
                       <div className="cockpit-task-info">
                         <span className="cockpit-task-label">
                           #{task.id} · {PLATFORM_LABELS[task.platform] || task.platform} · {task.source_type}
@@ -335,14 +384,14 @@ export default function DashboardPage() {
               <h2>🚀 快捷操作</h2>
             </div>
             <div className="cockpit-actions">
-              <button className="cockpit-action-btn" onClick={() => navigate("/monitor-sources")}>
+              <button className="cockpit-action-btn" onClick={() => navigate("/collection")}>
                 <span className="cockpit-action-icon">📡</span>
                 <div>
                   <strong>新建监控源</strong>
                   <span>配置关键词或账号监控</span>
                 </div>
               </button>
-              <button className="cockpit-action-btn" onClick={() => navigate("/crawl-tasks")}>
+              <button className="cockpit-action-btn" onClick={() => navigate("/collection")}>
                 <span className="cockpit-action-icon">▶️</span>
                 <div>
                   <strong>立即采集</strong>

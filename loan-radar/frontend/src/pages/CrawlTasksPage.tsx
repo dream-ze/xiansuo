@@ -106,7 +106,7 @@ type CrawlTaskView = CrawlTask & {
   source_name: string;
 };
 
-export default function CrawlTasksPage() {
+export default function CrawlTasksPage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
 
   const [form, setForm] = useState<FormState>({
@@ -343,8 +343,8 @@ export default function CrawlTasksPage() {
     ? failureTypesMeta[selectedTask.failure_type]
     : null;
 
-  return (
-    <main className="page-shell">
+  const pageContent = (
+    <>
       <header className="page-header">
         <div>
           <p className="page-eyebrow">采集任务</p>
@@ -701,6 +701,9 @@ export default function CrawlTasksPage() {
           </div>
         </div>
       )}
-    </main>
+    </>
   );
+
+  if (embedded) return pageContent;
+  return <main className="page-shell">{pageContent}</main>;
 }

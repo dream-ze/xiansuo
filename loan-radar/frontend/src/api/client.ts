@@ -297,6 +297,7 @@ export type LeadQueryParams = {
   source_comment_id?: number;
   is_duplicate?: boolean | string;
   converted_to_crm?: boolean | string;
+  created_after?: string;
   page?: number;
   page_size?: number;
 };
@@ -878,11 +879,19 @@ export type QueueStatus = {
 
 export type DashboardStats = {
   source_count: number;
-  task_count: number;
-  post_count: number;
-  comment_count: number;
-  lead_count: number;
-  a_lead_count: number;
+  today_task_count: number;
+  today_post_count: number;
+  today_comment_count: number;
+  today_lead_count: number;
+  today_a_lead_count: number;
+  total_task_count: number;
+  total_post_count: number;
+  total_comment_count: number;
+  total_lead_count: number;
+  total_a_lead_count: number;
+  yesterday_lead_count: number;
+  yesterday_a_lead_count: number;
+  yesterday_post_count: number;
   pending_competitor_count: number;
   recent_a_leads: Array<{
     id: number;

@@ -57,6 +57,7 @@ def export_leads_endpoint(
     source_comment_id: int | None = None,
     is_duplicate: bool | None = None,
     converted_to_crm: bool | None = None,
+    created_after: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = build_leads_query(
@@ -72,6 +73,7 @@ def export_leads_endpoint(
         source_comment_id=source_comment_id,
         is_duplicate=is_duplicate,
         converted_to_crm=converted_to_crm,
+        created_after=created_after,
     )
     leads = query.order_by(Lead.id.desc()).all()
     csv_bytes = export_leads_csv(leads)
@@ -95,6 +97,7 @@ def list_leads_endpoint(
     source_comment_id: int | None = None,
     is_duplicate: bool | None = None,
     converted_to_crm: bool | None = None,
+    created_after: str | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     db: Session = Depends(get_db),
@@ -112,6 +115,7 @@ def list_leads_endpoint(
         source_comment_id=source_comment_id,
         is_duplicate=is_duplicate,
         converted_to_crm=converted_to_crm,
+        created_after=created_after,
     )
     total = query.count()
     leads = (

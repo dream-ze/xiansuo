@@ -1,6 +1,8 @@
 import csv
 import io
 
+from datetime import datetime, timezone
+
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -30,6 +32,7 @@ def build_leads_query(
     source_comment_id: int | None = None,
     is_duplicate: bool | None = None,
     converted_to_crm: bool | None = None,
+    created_after: str | None = None,
 ):
     query = db.query(Lead)
 
@@ -65,6 +68,14 @@ def build_leads_query(
             query = query.filter(Lead.crm_customer_id.isnot(None))
         else:
             query = query.filter(Lead.crm_customer_id.is_(None))
+    if created_after:
+        try:
+            after_dt = datetime.fromisoformat(created_after)
+            if after_dt.tzinfo is None:
+                after_dt = after_dt.replace(tzinfo=timezone.utc)
+            query = query.filter(Lead.created_at >= after_dt)
+        except (ValueError, TypeError):
+            pass
 
     return query
 

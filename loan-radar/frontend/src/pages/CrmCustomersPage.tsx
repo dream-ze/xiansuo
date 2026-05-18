@@ -10,6 +10,7 @@ import {
   getCrmTasks,
   getLeads,
   updateCrmCustomer,
+  updateCrmTask,
   type CrmCustomer,
   type CrmFollowUp,
   type CrmTask,
@@ -60,8 +61,6 @@ type CustomerForm = {
 
 type FollowUpForm = {
   content: string;
-  customer_feedback: string;
-  next_action: string;
   next_follow_up_at: string;
 };
 
@@ -81,8 +80,6 @@ const EMPTY_CUSTOMER_FORM: CustomerForm = {
 
 const EMPTY_FOLLOW_UP_FORM: FollowUpForm = {
   content: "",
-  customer_feedback: "",
-  next_action: "",
   next_follow_up_at: "",
 };
 
@@ -96,6 +93,13 @@ function formatMoney(value: number | null | undefined) {
   return value.toLocaleString();
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
   const date = new Date(value);
@@ -106,6 +110,40 @@ function formatDateTime(value: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatRelativeTime(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 0) {
+    if (diffMins > -60) return `${Math.abs(diffMins)} 分钟前`;
+    const diffHours = Math.floor(Math.abs(diffMins) / 60);
+    if (diffHours < 24) return `${diffHours} 小时前`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} 天前`;
+  }
+  if (diffMins < 60) return `${diffMins} 分钟后`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} 小时后`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays <= 7) return `${diffDays} 天后`;
+  return formatDate(value);
+}
+
+function isOverdue(dueAt: string | null | undefined): boolean {
+  if (!dueAt) return false;
+  return new Date(dueAt) < new Date();
+}
+
+function isDueToday(dueAt: string | null | undefined): boolean {
+  if (!dueAt) return false;
+  const due = new Date(dueAt);
+  const now = new Date();
+  return due.toDateString() === now.toDateString() && due >= now;
 }
 
 function getStatusLabel(status: string) {
@@ -174,6 +212,20 @@ export default function CrmCustomersPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [convertingId, setConvertingId] = useState<number | null>(null);
 
+  const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
+
+  const customerTaskMap = useMemo(() => {
+    const map = new Map<number, CrmTask[]>();
+    for (const task of tasks) {
+      if (task.customer_id != null && task.status === "pending") {
+        const list = map.get(task.customer_id) || [];
+        list.push(task);
+        map.set(task.customer_id, list);
+      }
+    }
+    return map;
+  }, [tasks]);
+
   const filteredItems = useMemo(() => {
     return level ? items.filter((item) => item.customer_level === level) : items;
   }, [items, level]);
@@ -181,10 +233,17 @@ export default function CrmCustomersPage() {
   const stats = useMemo(() => {
     const pending = items.filter((item) => ["new", "following", "qualified"].includes(item.status)).length;
     const deals = items.filter((item) => item.status === "deal").length;
-    const imported = items.filter((item) => item.source_lead_id).length;
-    const highValue = items.filter((item) => (item.demand_amount || 0) >= 100000).length;
-    return { pending, deals, imported, highValue };
-  }, [items]);
+    const overdueCount = tasks.filter((t) => t.is_overdue).length;
+    const todayCount = tasks.filter((t) => isDueToday(t.due_at)).length;
+    return { pending, deals, overdueCount, todayCount };
+  }, [items, tasks]);
+
+  const activeNextReminder = useMemo(() => {
+    if (!selected) return null;
+    const customerTasks = customerTaskMap.get(selected.id) || [];
+    const pending = customerTasks.filter((t) => t.status === "pending" && t.due_at).sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
+    return pending[0] || null;
+  }, [selected, customerTaskMap]);
 
   async function loadData() {
     setLoading(true);
@@ -203,6 +262,9 @@ export default function CrmCustomersPage() {
         if (!current) return result.items[0] || null;
         return result.items.find((item) => item.id === current.id) || result.items[0] || null;
       });
+
+      const allTasksResult = await getCrmTasks({ status: "pending", page: 1, page_size: 200 });
+      setTasks(allTasksResult.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "客户列表加载失败");
     } finally {
@@ -213,17 +275,12 @@ export default function CrmCustomersPage() {
   async function loadDetail(customer: CrmCustomer | null) {
     if (!customer) {
       setFollowUps([]);
-      setTasks([]);
       return;
     }
     setDetailLoading(true);
     try {
-      const [nextFollowUps, nextTasks] = await Promise.all([
-        getCrmFollowUps({ customer_id: customer.id, page: 1, page_size: 6 }),
-        getCrmTasks({ customer_id: customer.id, status: "pending", page: 1, page_size: 6 }),
-      ]);
+      const nextFollowUps = await getCrmFollowUps({ customer_id: customer.id, page: 1, page_size: 20 });
       setFollowUps(nextFollowUps.items);
-      setTasks(nextTasks.items);
     } catch (err) {
       showToast("error", "详情加载失败", err instanceof Error ? err.message : "请稍后重试");
     } finally {
@@ -252,12 +309,10 @@ export default function CrmCustomersPage() {
 
   useEffect(() => {
     void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     void loadDetail(selected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
 
   function openCreateForm() {
@@ -295,11 +350,22 @@ export default function CrmCustomersPage() {
     }
   }
 
+  async function handleStatusChange(customer: CrmCustomer, nextStatus: string) {
+    try {
+      const saved = await updateCrmCustomer(customer.id, { status: nextStatus });
+      showToast("success", "状态已更新", `${customer.name} → ${getStatusLabel(nextStatus)}`);
+      setSelected(saved);
+      await loadData();
+    } catch (err) {
+      showToast("error", "状态更新失败", err instanceof Error ? err.message : "请稍后重试");
+    }
+  }
+
   async function handleCreateFollowUp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) return;
-    if (!followUpForm.content.trim() && !followUpForm.next_action.trim()) {
-      showToast("error", "请填写跟进内容", "至少记录本次沟通或下一步动作");
+    if (!followUpForm.content.trim()) {
+      showToast("error", "请填写跟进内容", "记录一下沟通了什么");
       return;
     }
 
@@ -309,31 +375,44 @@ export default function CrmCustomersPage() {
         customer_id: selected.id,
         owner_name: selected.owner_name,
         follow_up_type: "manual",
-        content: followUpForm.content.trim() || "记录客户跟进",
-        customer_feedback: followUpForm.customer_feedback.trim() || null,
-        next_action: followUpForm.next_action.trim() || null,
-        next_follow_up_at: followUpForm.next_follow_up_at ? new Date(followUpForm.next_follow_up_at).toISOString() : null,
+        content: followUpForm.content.trim(),
       });
 
-      if (followUpForm.next_action.trim() || followUpForm.next_follow_up_at) {
+      if (followUpForm.next_follow_up_at) {
         await createCrmTask({
           customer_id: selected.id,
-          title: followUpForm.next_action.trim() || `继续跟进 ${selected.name}`,
+          title: `跟进：${selected.name}`,
           task_type: "follow_up",
           owner_name: selected.owner_name,
-          due_at: followUpForm.next_follow_up_at ? new Date(followUpForm.next_follow_up_at).toISOString() : null,
+          due_at: new Date(followUpForm.next_follow_up_at).toISOString(),
+          status: "pending",
           priority: selected.customer_level === "A" ? "high" : "normal",
-          suggestion: "按客户反馈安排下一次沟通，优先确认需求金额、用途、资质和可接受方案。",
         });
       }
 
       setFollowUpForm(EMPTY_FOLLOW_UP_FORM);
-      showToast("success", "跟进已记录", "提醒任务已同步更新");
+      showToast("success", "跟进已记录", followUpForm.next_follow_up_at ? "已设置下次提醒" : undefined);
       await loadDetail(selected);
+      const allTasksResult = await getCrmTasks({ status: "pending", page: 1, page_size: 200 });
+      setTasks(allTasksResult.items);
     } catch (err) {
       showToast("error", "跟进保存失败", err instanceof Error ? err.message : "请稍后重试");
     } finally {
       setSavingFollowUp(false);
+    }
+  }
+
+  async function handleCompleteTask(task: CrmTask) {
+    setBusyTaskId(task.id);
+    try {
+      await updateCrmTask(task.id, { status: "done" });
+      showToast("success", "任务已完成", task.title);
+      const allTasksResult = await getCrmTasks({ status: "pending", page: 1, page_size: 200 });
+      setTasks(allTasksResult.items);
+    } catch (err) {
+      showToast("error", "完成失败", err instanceof Error ? err.message : "请稍后重试");
+    } finally {
+      setBusyTaskId(null);
     }
   }
 
@@ -354,13 +433,25 @@ export default function CrmCustomersPage() {
 
   const activeCustomer = selected;
 
+  function getCustomerReminderTag(customer: CrmCustomer) {
+    const customerTasks = customerTaskMap.get(customer.id) || [];
+    const overdueTasks = customerTasks.filter((t) => t.is_overdue);
+    const todayTasks = customerTasks.filter((t) => isDueToday(t.due_at));
+
+    if (overdueTasks.length > 0) return { type: "overdue" as const, label: "已逾期" };
+    if (todayTasks.length > 0) return { type: "today" as const, label: "今天联系" };
+    const nextTask = customerTasks.filter((t) => t.due_at).sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime())[0];
+    if (nextTask) return { type: "scheduled" as const, label: formatRelativeTime(nextTask.due_at) || "已安排" };
+    return null;
+  }
+
   return (
     <main className="page-shell crm-workbench">
       <header className="page-header crm-workbench-hero">
         <div>
-          <p className="page-eyebrow">CRM Customer Workbench</p>
-          <h1>客户管理</h1>
-          <p className="page-description">统一管理手动录入和线索导入的客户，聚焦跟进、提醒和下一步动作。</p>
+          <p className="page-eyebrow">客户管理</p>
+          <h1>智获客雷达</h1>
+          <p className="page-description">管理客户档案，记录跟进并设置提醒，不错过任何一次联系。</p>
         </div>
         <div className="action-row">
           <button className="btn-secondary" type="button" onClick={() => { setImportOpen(true); void loadImportLeads(); }}>从线索导入</button>
@@ -369,10 +460,10 @@ export default function CrmCustomersPage() {
       </header>
 
       <section className="crm-kpi-grid">
-        <div className="crm-kpi-card"><span>客户总数</span><strong>{total}</strong><p>当前筛选范围内客户</p></div>
-        <div className="crm-kpi-card"><span>待跟进</span><strong>{stats.pending}</strong><p>新客户、跟进中、已确认需求</p></div>
-        <div className="crm-kpi-card"><span>线索导入</span><strong>{stats.imported}</strong><p>来自线索池的客户</p></div>
-        <div className="crm-kpi-card"><span>高价值需求</span><strong>{stats.highValue}</strong><p>需求金额不低于 10 万</p></div>
+        <div className="crm-kpi-card"><span>客户总数</span><strong>{total}</strong><p>当前筛选范围内</p></div>
+        <div className="crm-kpi-card crm-kpi-warn"><span>逾期未联系</span><strong>{stats.overdueCount}</strong><p>需要立即跟进</p></div>
+        <div className="crm-kpi-card crm-kpi-today"><span>今天待联系</span><strong>{stats.todayCount}</strong><p>今天需要跟进</p></div>
+        <div className="crm-kpi-card"><span>已成交</span><strong>{stats.deals}</strong><p>状态为已成交</p></div>
       </section>
 
       <section className="card crm-filter-card">
@@ -383,7 +474,6 @@ export default function CrmCustomersPage() {
           <label><span>客户等级</span><select value={level} onChange={(e) => setLevel(e.target.value)}>{LEVEL_OPTIONS.map((option) => <option key={option || "all"} value={option}>{option || "全部等级"}</option>)}</select></label>
         </div>
         <div className="crm-filter-actions">
-          <p className="field-hint">提示：客户页默认隐藏采集任务、帖子 ID、评论 ID 和原始证据，只保留客户可理解的来源摘要。</p>
           <button type="button" className="btn-primary" onClick={() => void loadData()} disabled={loading}>{loading ? "查询中..." : "查询客户"}</button>
         </div>
       </section>
@@ -395,7 +485,7 @@ export default function CrmCustomersPage() {
           <div className="card-header card-header-row">
             <div>
               <h2>客户列表</h2>
-              <p>点击客户查看资料、跟进记录和提醒任务。</p>
+              <p>点击客户查看详情和跟进记录</p>
             </div>
             <span className="crm-count">{filteredItems.length} 位客户</span>
           </div>
@@ -403,33 +493,41 @@ export default function CrmCustomersPage() {
           {loading ? <p className="state-text">客户加载中...</p> : null}
           {!loading && filteredItems.length === 0 ? (
             <div className="state-panel state-empty">
-              <p>还没有符合条件的客户。可以先新增客户，或从线索池导入已确认有效的线索。</p>
+              <p>还没有符合条件的客户。可以先新增客户，或从线索池导入。</p>
             </div>
           ) : null}
 
           <div className="crm-customer-stack">
-            {filteredItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={activeCustomer?.id === item.id ? "crm-customer-row active" : "crm-customer-row"}
-                onClick={() => setSelected(item)}
-              >
-                <div className="crm-customer-row-main">
-                  <div>
-                    <strong>{item.name}</strong>
-                    <p>{compactText(item.loan_purpose, "暂未填写贷款用途")}</p>
+            {filteredItems.map((item) => {
+              const reminder = getCustomerReminderTag(item);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activeCustomer?.id === item.id ? "crm-customer-row active" : "crm-customer-row"}
+                  onClick={() => setSelected(item)}
+                >
+                  <div className="crm-customer-row-main">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>{compactText(item.loan_purpose, "暂未填写贷款用途")}</p>
+                    </div>
+                    <div className="crm-customer-row-right">
+                      {reminder ? (
+                        <span className={`crm-reminder-tag crm-reminder-${reminder.type}`}>{reminder.label}</span>
+                      ) : null}
+                      <span className={`status-pill status-${item.status}`}>{getStatusLabel(item.status)}</span>
+                    </div>
                   </div>
-                  <span className={`status-pill status-${item.status}`}>{getStatusLabel(item.status)}</span>
-                </div>
-                <div className="crm-customer-meta">
-                  <span>{item.customer_level ? `${item.customer_level} 级` : "未评级"}</span>
-                  <span>{formatMoney(item.demand_amount)}</span>
-                  <span>{compactText(item.owner_name, "未分配")}</span>
-                  <span>{item.source_lead_id ? "线索导入" : "手动录入"}</span>
-                </div>
-              </button>
-            ))}
+                  <div className="crm-customer-meta">
+                    <span>{item.customer_level ? `${item.customer_level} 级` : "未评级"}</span>
+                    <span>{formatMoney(item.demand_amount)}</span>
+                    <span>{compactText(item.owner_name, "未分配")}</span>
+                    <span>{item.source_platform ? PLATFORM_LABELS[item.source_platform] || item.source_platform : "手动录入"}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -438,17 +536,49 @@ export default function CrmCustomersPage() {
             <>
               <div className="crm-detail-header">
                 <div>
-                  <p className="page-eyebrow">Customer Profile</p>
                   <h2>{activeCustomer.name}</h2>
-                  <p>{activeCustomer.source_lead_id ? "由线索导入，已转入 CRM 跟进" : "手动录入客户"}</p>
+                  <div className="crm-detail-status-row">
+                    <span className={`status-pill status-${activeCustomer.status}`}>{getStatusLabel(activeCustomer.status)}</span>
+                    {activeCustomer.customer_level ? <span className="crm-level-badge">{activeCustomer.customer_level}级</span> : null}
+                    <select
+                      className="crm-status-quick"
+                      value={activeCustomer.status}
+                      onChange={(e) => void handleStatusChange(activeCustomer, e.target.value)}
+                    >
+                      {STATUS_OPTIONS.filter((o) => o.value).map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <button type="button" className="btn-secondary" onClick={() => openEditForm(activeCustomer)}>编辑资料</button>
               </div>
 
-              <div className="crm-guidance">
-                <strong>操作提示</strong>
-                <p>先确认客户联系方式、需求金额和用途；沟通后在下方记录跟进，并设置下次提醒。</p>
-              </div>
+              {activeNextReminder ? (
+                <div className={`crm-next-reminder ${activeNextReminder.is_overdue ? "crm-reminder-overdue" : ""}`}>
+                  <div className="crm-next-reminder-icon">⏰</div>
+                  <div className="crm-next-reminder-info">
+                    <strong>{activeNextReminder.is_overdue ? "已逾期，请尽快联系" : "下次提醒"}</strong>
+                    <span>{formatDateTime(activeNextReminder.due_at)}（{formatRelativeTime(activeNextReminder.due_at)}）</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    disabled={busyTaskId === activeNextReminder.id}
+                    onClick={() => void handleCompleteTask(activeNextReminder)}
+                  >
+                    {busyTaskId === activeNextReminder.id ? "..." : "已联系"}
+                  </button>
+                </div>
+              ) : (
+                <div className="crm-next-reminder crm-reminder-none">
+                  <div className="crm-next-reminder-icon">📋</div>
+                  <div className="crm-next-reminder-info">
+                    <strong>暂无提醒</strong>
+                    <span>在下方记录跟进时可设置下次提醒时间</span>
+                  </div>
+                </div>
+              )}
 
               <section className="drawer-section">
                 <h4 className="drawer-section-title">基础资料</h4>
@@ -457,54 +587,71 @@ export default function CrmCustomersPage() {
                   <div className="detail-field"><span className="detail-label">其他联系方式</span><strong className="detail-value">{compactText(activeCustomer.contact_info)}</strong></div>
                   <div className="detail-field"><span className="detail-label">负责人</span><strong className="detail-value">{compactText(activeCustomer.owner_name, "未分配")}</strong></div>
                   <div className="detail-field"><span className="detail-label">需求金额</span><strong className="detail-value">{formatMoney(activeCustomer.demand_amount)}</strong></div>
-                  <div className="detail-field"><span className="detail-label">客户等级</span><strong className="detail-value">{compactText(activeCustomer.customer_level, "未评级")}</strong></div>
+                  <div className="detail-field"><span className="detail-label">贷款用途</span><strong className="detail-value">{compactText(activeCustomer.loan_purpose)}</strong></div>
                   <div className="detail-field"><span className="detail-label">风险等级</span><strong className="detail-value">{compactText(activeCustomer.risk_level, "未评估")}</strong></div>
                 </div>
               </section>
 
-              <section className="drawer-section">
-                <h4 className="drawer-section-title">来源与需求</h4>
-                <div className="crm-source-box">
-                  <div><span>来源</span><strong>{activeCustomer.source_platform ? PLATFORM_LABELS[activeCustomer.source_platform] || activeCustomer.source_platform : "手动录入"}</strong></div>
-                  <div><span>客户诉求</span><p>{compactText(activeCustomer.source_summary || activeCustomer.loan_purpose, "暂无来源摘要")}</p></div>
-                  <div><span>资质摘要</span><p>{compactText(activeCustomer.qualification_summary, "暂未补充资质信息")}</p></div>
-                </div>
-              </section>
+              {activeCustomer.source_platform || activeCustomer.source_summary ? (
+                <section className="drawer-section">
+                  <h4 className="drawer-section-title">来源信息</h4>
+                  <div className="crm-source-box">
+                    <div><span>来源</span><strong>{activeCustomer.source_platform ? PLATFORM_LABELS[activeCustomer.source_platform] || activeCustomer.source_platform : "手动录入"}</strong></div>
+                    {activeCustomer.source_summary ? <div><span>原始内容</span><p>{activeCustomer.source_summary}</p></div> : null}
+                    {activeCustomer.qualification_summary ? <div><span>资质摘要</span><p>{activeCustomer.qualification_summary}</p></div> : null}
+                  </div>
+                </section>
+              ) : null}
 
               <section className="drawer-section">
-                <h4 className="drawer-section-title">跟进与提醒</h4>
-                {detailLoading ? <p className="state-text">跟进信息加载中...</p> : null}
-                <div className="crm-task-list">
-                  {tasks.length === 0 ? <p className="field-hint">暂无待办提醒。记录下一步动作后会自动创建提醒。</p> : null}
-                  {tasks.map((task) => (
-                    <div key={task.id} className={task.is_overdue ? "crm-task-item overdue" : "crm-task-item"}>
-                      <strong>{task.title}</strong>
-                      <span>{task.due_at ? formatDateTime(task.due_at) : "未设置时间"}</span>
+                <h4 className="drawer-section-title">跟进记录</h4>
+                {detailLoading ? <p className="state-text">加载中...</p> : null}
+
+                <div className="crm-timeline">
+                  {followUps.length === 0 && !detailLoading ? (
+                    <div className="crm-timeline-empty">暂无跟进记录，在下方记录第一次沟通</div>
+                  ) : null}
+                  {followUps.map((item) => (
+                    <div key={item.id} className="crm-timeline-item">
+                      <div className="crm-timeline-dot" />
+                      <div className="crm-timeline-content">
+                        <div className="crm-timeline-header">
+                          <span className="crm-timeline-type">{item.follow_up_type === "stage_change" ? "状态变更" : "手动跟进"}</span>
+                          <span className="crm-timeline-time">{formatDateTime(item.created_at)}</span>
+                        </div>
+                        <p>{item.content}</p>
+                        {item.customer_feedback ? <p className="crm-timeline-feedback">客户反馈：{item.customer_feedback}</p> : null}
+                        {item.next_action ? <p className="crm-timeline-next">下一步：{item.next_action}</p> : null}
+                      </div>
                     </div>
                   ))}
                 </div>
 
                 <form className="crm-follow-form" onSubmit={(event) => void handleCreateFollowUp(event)}>
-                  <label><span>本次跟进记录</span><textarea className="text-area" value={followUpForm.content} onChange={(e) => setFollowUpForm((current) => ({ ...current, content: e.target.value }))} placeholder="记录沟通内容，例如：客户确认需要 30 万经营周转，明天补充流水。" /></label>
-                  <label><span>客户反馈</span><input value={followUpForm.customer_feedback} onChange={(e) => setFollowUpForm((current) => ({ ...current, customer_feedback: e.target.value }))} placeholder="客户目前最关心的问题" /></label>
-                  <div className="form-grid">
-                    <label><span>下一步动作</span><input value={followUpForm.next_action} onChange={(e) => setFollowUpForm((current) => ({ ...current, next_action: e.target.value }))} placeholder="例如：明天电话确认资料" /></label>
-                    <label><span>提醒时间</span><input type="datetime-local" value={followUpForm.next_follow_up_at} onChange={(e) => setFollowUpForm((current) => ({ ...current, next_follow_up_at: e.target.value }))} /></label>
+                  <label>
+                    <span>沟通内容</span>
+                    <textarea
+                      className="text-area"
+                      value={followUpForm.content}
+                      onChange={(e) => setFollowUpForm((current) => ({ ...current, content: e.target.value }))}
+                      placeholder="记录沟通内容，例如：客户确认需要 30 万经营周转"
+                      rows={2}
+                    />
+                  </label>
+                  <div className="crm-follow-form-row">
+                    <label>
+                      <span>下次提醒时间</span>
+                      <input
+                        type="datetime-local"
+                        value={followUpForm.next_follow_up_at}
+                        onChange={(e) => setFollowUpForm((current) => ({ ...current, next_follow_up_at: e.target.value }))}
+                      />
+                    </label>
+                    <button type="submit" className="btn-primary" disabled={savingFollowUp}>
+                      {savingFollowUp ? "保存中..." : "记录跟进"}
+                    </button>
                   </div>
-                  <div className="form-actions"><button type="submit" className="btn-primary" disabled={savingFollowUp}>{savingFollowUp ? "保存中..." : "记录跟进并提醒"}</button></div>
                 </form>
-
-                <div className="crm-follow-history">
-                  <h5>最近跟进</h5>
-                  {followUps.length === 0 ? <p className="field-hint">暂无跟进记录。</p> : null}
-                  {followUps.map((item) => (
-                    <div key={item.id} className="crm-follow-item">
-                      <strong>{item.content}</strong>
-                      <p>{item.next_action || item.customer_feedback || "暂无下一步"}</p>
-                      <span>{formatDateTime(item.created_at)}</span>
-                    </div>
-                  ))}
-                </div>
               </section>
 
               {activeCustomer.notes ? (
@@ -550,7 +697,7 @@ export default function CrmCustomersPage() {
         <div className="modal-overlay" role="presentation" onClick={() => setImportOpen(false)}>
           <div className="modal-content modal-lg" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <div><h2>从线索导入客户</h2><p>只展示尚未转入 CRM 的线索，确认有效后会自动生成客户、商机和首个提醒。</p></div>
+              <div><h2>从线索导入客户</h2><p>只展示尚未转入 CRM 的线索，确认有效后会自动生成客户和首个提醒。</p></div>
               <button type="button" className="modal-close" onClick={() => setImportOpen(false)}>×</button>
             </div>
             <div className="modal-body">
@@ -559,7 +706,6 @@ export default function CrmCustomersPage() {
                 <label><span>线索等级</span><select value={leadLevel} onChange={(e) => setLeadLevel(e.target.value)}>{LEVEL_OPTIONS.map((option) => <option key={option || "lead-all"} value={option}>{option || "全部等级"}</option>)}</select></label>
               </div>
               <div className="crm-filter-actions">
-                <p className="field-hint">建议优先导入 A/B 级、需求明确、风险可控的线索。</p>
                 <button type="button" className="btn-primary" onClick={() => void loadImportLeads()} disabled={leadLoading}>{leadLoading ? "加载中..." : "查询线索"}</button>
               </div>
               {leadError ? <p className="inline-error">{leadError}</p> : null}
@@ -572,7 +718,6 @@ export default function CrmCustomersPage() {
                       <p>{compactText(lead.content, "暂无线索内容")}</p>
                       <div className="crm-customer-meta">
                         <span>{lead.lead_level} 级</span>
-                        <span>{lead.lead_score} 分</span>
                         <span>{PLATFORM_LABELS[lead.platform] || lead.platform}</span>
                         <span>{compactText(lead.demand_type, "未识别需求")}</span>
                       </div>

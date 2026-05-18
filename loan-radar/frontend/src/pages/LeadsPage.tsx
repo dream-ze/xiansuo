@@ -20,6 +20,15 @@ const DUPLICATE_FILTER_OPTIONS = [
   { value: "true", label: "重复线索" },
 ];
 
+const PUBLISH_TIME_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "7", label: "最近7天" },
+  { value: "15", label: "最近15天" },
+  { value: "30", label: "最近30天" },
+  { value: "90", label: "最近3个月" },
+  { value: "180", label: "最近6个月" },
+];
+
 const PLATFORM_LABELS: Record<string, string> = {
   xhs: "小红书",
   douyin: "抖音",
@@ -187,7 +196,7 @@ export default function LeadsPage() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [statTotals, setStatTotals] = useState<Record<string, number>>({ all: 0, A: 0, B: 0, C: 0, D: 0 });
-  const [filters, setFilters] = useState<LeadQueryParams>(() => {
+  const [filters, setFilters] = useState<LeadQueryParams & { publish_time_days: string }>(() => {
     const sp = searchParams;
     return {
       lead_level: sp.get("lead_level") || "",
@@ -199,6 +208,8 @@ export default function LeadsPage() {
       source_post_id: sp.get("source_post_id") ? Number(sp.get("source_post_id")) : undefined,
       source_comment_id: sp.get("source_comment_id") ? Number(sp.get("source_comment_id")) : undefined,
       is_duplicate: sp.get("is_duplicate") || "",
+      created_after: undefined,
+      publish_time_days: "",
     };
   });
   const [draftStatuses, setDraftStatuses] = useState<Record<number, string>>({});
@@ -217,6 +228,18 @@ export default function LeadsPage() {
     setError(null);
 
     try {
+      let createdAfter = nextFilters.created_after;
+      if (nextFilters.publish_time_days) {
+        const days = Number(nextFilters.publish_time_days);
+        if (days > 0) {
+          const date = new Date();
+          date.setDate(date.getDate() - days);
+          createdAfter = date.toISOString();
+        }
+      } else {
+        createdAfter = undefined;
+      }
+
       const commonFilters = {
         demand_type: nextFilters.demand_type || undefined,
         platform: nextFilters.platform || undefined,
@@ -226,6 +249,7 @@ export default function LeadsPage() {
         source_post_id: nextFilters.source_post_id || undefined,
         source_comment_id: nextFilters.source_comment_id || undefined,
         is_duplicate: nextFilters.is_duplicate === "true" ? true : nextFilters.is_duplicate === "false" ? false : undefined,
+        created_after: createdAfter,
       };
 
       const [listResult, allResult, aResult, bResult, cResult, dResult] = await Promise.all([
@@ -284,7 +308,7 @@ export default function LeadsPage() {
   }
 
   async function resetFilters() {
-    const nextFilters: LeadQueryParams = {
+    const nextFilters: LeadQueryParams & { publish_time_days: string } = {
       lead_level: "",
       demand_type: "",
       platform: "",
@@ -294,6 +318,8 @@ export default function LeadsPage() {
       source_post_id: undefined,
       source_comment_id: undefined,
       is_duplicate: "",
+      created_after: undefined,
+      publish_time_days: "",
     };
     setFilters(nextFilters);
     setPage(1);
@@ -347,6 +373,16 @@ export default function LeadsPage() {
     setError(null);
 
     try {
+      let createdAfter = filters.created_after;
+      if (filters.publish_time_days) {
+        const days = Number(filters.publish_time_days);
+        if (days > 0) {
+          const date = new Date();
+          date.setDate(date.getDate() - days);
+          createdAfter = date.toISOString();
+        }
+      }
+
       const blob = await exportLeadsCsv({
         lead_level: filters.lead_level || undefined,
         demand_type: filters.demand_type || undefined,
@@ -357,6 +393,7 @@ export default function LeadsPage() {
         source_post_id: filters.source_post_id || undefined,
         source_comment_id: filters.source_comment_id || undefined,
         is_duplicate: filters.is_duplicate === "true" ? true : filters.is_duplicate === "false" ? false : undefined,
+        created_after: createdAfter,
       });
       downloadBlob(blob, "leads.csv");
       showToast("success", "导出成功", "CSV 文件已下载");
@@ -408,9 +445,9 @@ export default function LeadsPage() {
     <main className="page-shell">
       <header className="page-header">
         <div>
-          <p className="page-eyebrow">线索池</p>
+          <p className="page-eyebrow">线索跟踪</p>
           <h1>智获客雷达</h1>
-          <p className="page-description">查看 A/B/C/D 级线索，核对证据链，修改状态并导出 CSV。</p>
+          <p className="page-description">查看 A/B/C/D 级线索，核对证据链，修改状态并导出 CSV。支持按发布时间筛选。</p>
         </div>
       </header>
 
@@ -489,6 +526,16 @@ export default function LeadsPage() {
             <span>重复筛选</span>
             <select value={String(filters.is_duplicate ?? "")} onChange={(event) => setFilters((current) => ({ ...current, is_duplicate: event.target.value }))}>
               {DUPLICATE_FILTER_OPTIONS.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>发布时间</span>
+            <select value={filters.publish_time_days ?? ""} onChange={(event) => setFilters((current) => ({ ...current, publish_time_days: event.target.value }))}>
+              {PUBLISH_TIME_OPTIONS.map((option) => (
                 <option key={option.value || "all"} value={option.value}>
                   {option.label}
                 </option>

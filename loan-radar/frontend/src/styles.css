@@ -1252,6 +1252,44 @@ th {
   font-weight: 600;
 }
 
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.tab-item {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  border-radius: 0;
+}
+
+.tab-item:hover {
+  color: #1d4ed8;
+  background: none;
+}
+
+.tab-item.active {
+  color: #1d4ed8;
+  border-bottom-color: #1d4ed8;
+  font-weight: 600;
+  background: none;
+}
+
+.tab-content {
+  margin-top: 0;
+}
+
 .btn-sm {
   padding: 2px 10px;
   font-size: 12px;
@@ -2578,6 +2616,24 @@ th {
   margin: 6px 0 0;
 }
 
+.crm-kpi-warn strong {
+  color: #dc2626;
+}
+
+.crm-kpi-warn {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.crm-kpi-today strong {
+  color: #d97706;
+}
+
+.crm-kpi-today {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
 .crm-filter-card {
   border-radius: 8px;
   margin-bottom: 16px;
@@ -2590,7 +2646,7 @@ th {
 .crm-filter-actions {
   align-items: center;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   margin-top: 14px;
 }
@@ -2660,6 +2716,39 @@ th {
   margin: 5px 0 0;
 }
 
+.crm-customer-row-right {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.crm-reminder-tag {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.crm-reminder-overdue {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+}
+
+.crm-reminder-today {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #d97706;
+}
+
+.crm-reminder-scheduled {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0284c7;
+}
+
 .crm-customer-meta {
   color: #6b7280;
   display: flex;
@@ -2690,28 +2779,79 @@ th {
   margin: 0;
 }
 
-.crm-detail-header p {
-  color: #6b7280;
-  margin: 6px 0 0;
+.crm-detail-status-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
 }
 
-.crm-guidance {
+.crm-level-badge {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+}
+
+.crm-status-quick {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  padding: 4px 8px;
+  width: auto;
+}
+
+.crm-next-reminder {
+  align-items: center;
   background: #f0f9ff;
   border: 1px solid #bae6fd;
   border-radius: 8px;
+  display: flex;
+  gap: 12px;
   margin-bottom: 16px;
   padding: 12px 14px;
 }
 
-.crm-guidance strong {
-  color: #075985;
-  display: block;
-  margin-bottom: 4px;
+.crm-reminder-overdue {
+  background: #fef2f2;
+  border-color: #fecaca;
 }
 
-.crm-guidance p {
+.crm-reminder-overdue .crm-next-reminder-info strong {
+  color: #dc2626;
+}
+
+.crm-reminder-none {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.crm-next-reminder-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.crm-next-reminder-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.crm-next-reminder-info strong {
+  display: block;
   color: #0369a1;
-  margin: 0;
+  font-size: 14px;
+}
+
+.crm-reminder-none .crm-next-reminder-info strong {
+  color: #6b7280;
+}
+
+.crm-next-reminder-info span {
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .crm-source-box {
@@ -2739,70 +2879,113 @@ th {
   margin: 0;
 }
 
-.crm-task-list,
-.crm-follow-history,
-.crm-import-list {
+.crm-timeline {
   display: grid;
-  gap: 10px;
+  gap: 0;
+  margin-bottom: 16px;
 }
 
-.crm-task-item,
-.crm-follow-item,
-.crm-import-item {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px;
+.crm-timeline-empty {
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 16px 0;
+  text-align: center;
 }
 
-.crm-task-item {
+.crm-timeline-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  position: relative;
+}
+
+.crm-timeline-dot {
+  background: #93c5fd;
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 10px;
+  margin-top: 5px;
+  width: 10px;
+}
+
+.crm-timeline-item:not(:last-child) .crm-timeline-dot {
+  box-shadow: 0 10px 0 0 #e5e7eb;
+}
+
+.crm-timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.crm-timeline-header {
   align-items: center;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
-.crm-task-item.overdue {
-  background: #fef2f2;
-  border-color: #fecaca;
-}
-
-.crm-task-item span,
-.crm-follow-item span {
+.crm-timeline-type {
+  background: #f3f4f6;
+  border-radius: 999px;
   color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.crm-timeline-time {
+  color: #9ca3af;
   font-size: 12px;
+}
+
+.crm-timeline-content p {
+  color: #374151;
+  font-size: 13px;
+  margin: 0;
+}
+
+.crm-timeline-feedback {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.crm-timeline-next {
+  color: #0369a1;
+  font-weight: 500;
 }
 
 .crm-follow-form {
   border-top: 1px solid #e5e7eb;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
 }
 
 .crm-follow-form label {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
-.crm-follow-history {
-  border-top: 1px solid #e5e7eb;
-  margin-top: 14px;
-  padding-top: 14px;
+.crm-follow-form-row {
+  align-items: flex-end;
+  display: flex;
+  gap: 12px;
 }
 
-.crm-follow-history h5 {
-  margin: 0;
+.crm-follow-form-row label {
+  flex: 1;
 }
 
-.crm-follow-item strong {
-  display: block;
+.crm-follow-form-row .btn-primary {
+  flex-shrink: 0;
+  margin-bottom: 0;
+  white-space: nowrap;
 }
 
-.crm-follow-item p {
-  color: #4b5563;
-  margin: 5px 0;
+.crm-import-list {
+  display: grid;
+  gap: 10px;
 }
 
 .crm-import-item {
@@ -2810,6 +2993,10 @@ th {
   display: flex;
   justify-content: space-between;
   gap: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
 }
 
 .crm-import-item p {
@@ -2819,7 +3006,6 @@ th {
 
 @media (max-width: 1100px) {
   .crm-workbench-hero,
-  .crm-filter-actions,
   .crm-detail-header,
   .crm-import-item {
     align-items: stretch;
@@ -2852,4 +3038,149 @@ th {
   .form-grid-span-2 {
     grid-column: auto;
   }
+
+  .crm-follow-form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.nav-brand {
+  font-weight: 700;
+  font-size: 16px;
+  color: #1d4ed8;
+  margin-right: 8px;
+  white-space: nowrap;
+  padding: 6px 0;
+}
+
+.nav-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nav-group.active > .nav-link {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.nav-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  padding: 6px 0;
+  min-width: 140px;
+  z-index: 50;
+}
+
+.nav-group:hover .nav-dropdown {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-dropdown-item {
+  display: block;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #374151;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.nav-dropdown-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.nav-dropdown-item.active {
+  color: #1d4ed8;
+  font-weight: 600;
+  background: #eff6ff;
+}
+
+.cockpit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.cockpit-mode-toggle {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cockpit-mode-btn {
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: 0;
+  background: white;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.cockpit-mode-btn.active {
+  background: #1d4ed8;
+  color: white;
+}
+
+.cockpit-mode-btn:not(.active):hover {
+  background: #f3f4f6;
+}
+
+.cockpit-refresh-info {
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cockpit-refresh-btn {
+  border: none;
+  background: none;
+  font-size: 16px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.cockpit-refresh-btn:hover {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.cockpit-vs-up {
+  font-size: 12px;
+  font-weight: 600;
+  color: #16a34a;
+  margin-left: 6px;
+}
+
+.cockpit-vs-down {
+  font-size: 12px;
+  font-weight: 600;
+  color: #dc2626;
+  margin-left: 6px;
+}
+
+.cockpit-vs-neutral {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-left: 6px;
 }

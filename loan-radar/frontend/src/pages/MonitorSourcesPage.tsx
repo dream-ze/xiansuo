@@ -162,7 +162,7 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
   };
 }
 
-export default function MonitorSourcesPage() {
+export default function MonitorSourcesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [items, setItems] = useState<MonitorSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -373,8 +373,8 @@ export default function MonitorSourcesPage() {
     }
   }
 
-  return (
-    <main className="page-shell">
+  const pageContent = (
+    <>
       <header className="page-header">
         <div>
           <p className="page-eyebrow">监控源管理</p>
@@ -715,6 +715,9 @@ export default function MonitorSourcesPage() {
           </div>
         ) : null}
       </section>
-    </main>
+    </>
   );
+
+  if (embedded) return pageContent;
+  return <main className="page-shell">{pageContent}</main>;
 }
