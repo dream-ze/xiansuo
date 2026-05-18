@@ -62,15 +62,18 @@
 ### 2.5 通用枚举
 
 - `source_type`：`keyword` / `competitor_account` / `manual_post` / `hot_post_rule`
-- `platform`：`xhs` / `douyin` / `zhihu` / `kuaishou` / `bilibili` / `weibo` / `tieba` / `other`
+- `platform`：`xhs` / `douyin` / `zhihu`
 
-  > 注意：创建监控源时以上 8 个平台均可通过校验，但当前 MediaCrawler 仅支持 `xhs` / `douyin` / `zhihu` 三个平台的采集。选择其他平台创建监控源会成功，但触发采集时会失败。
+  > 当前 MVP 仅支持以上 3 个平台。传入其他平台（如 kuaishou / bilibili / weibo / tieba / other）将返回 400 错误。后续版本将逐步开放更多平台。
 - `crawl_task.status`：`pending` / `running` / `success` / `failed`
 - `lead.lead_level`：`A` / `B` / `C` / `D`
-- `lead.status`：`new` / `contacted` / `invalid` / `converted`
+- `lead.status`：`new` / `contacted` / `interested` / `invalid` / `converted`
+- `lead.is_duplicate`：`true` / `false`——标记线索是否为疑似重复
+- `lead.duplicate_reason`：重复原因枚举值——`"同用户相似评论(相似度XX%)"` 或 `"相同内容重复"`
 - `comment.demand_type`：由评分服务输出（如 `借款需求`、`资质焦虑`、`产品咨询`、`弱意向` 等）
 - `comment.risk_level`：由评分服务输出（如 `low` / `mid` / `high`，以代码为准）
-- `collector_type`：`media_crawler`（当前唯一可用）
+- `collector_type`：`media_crawler`（真实采集）/ `mock`（演示采集，需设置 `ENABLE_MOCK_COLLECTOR=true`）
+- `crawl_task.failure_type`：`media_crawler_unreachable` / `platform_not_supported` / `auth_required` / `captcha_or_risk_control` / `timeout` / `empty_result` / `parser_error` / `unknown`
 
 ---
 
@@ -148,6 +151,7 @@
 行为：基于该监控源同步运行一次采集流水线，返回新建的 `CrawlTask`。
 
 - 当 `config.collector_type == "media_crawler"` 时，使用 MediaCrawlerCollector 采集。
+- 当 `config.collector_type == "mock"` 时，使用 MockCollector 生成演示数据（需 `ENABLE_MOCK_COLLECTOR=true`）。
 - MediaCrawler 支持关键词搜索、指定帖子、创作者主页采集，需 MediaCrawler API 服务在线。
 - 采集失败不会导致后端服务崩溃；任务返回 `status="failed"`，并在 `error_message` 中写明原因。
 
@@ -182,6 +186,80 @@
 }
 ```
 
+### 3.9 一键初始化演示数据
+
+`POST /api/monitor-sources/demo/seed`
+
+行为：直接写入数据库生成完整演示数据（监控源、帖子、评论、线索、同行账号、日报）。仅在开发环境（`APP_ENV != production`）可用，生产环境返回 403。支持重复运行（先清理旧 demo 数据）。
+
+响应（200）：
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "演示数据初始化完成",
+    "stats": {
+      "sources": 3,
+      "posts": 10,
+      "comments": 50,
+      "leads": 29,
+      "lead_levels": {"A": 16, "B": 6, "C": 4, "D": 3},
+      "competitors": 5,
+      "crawl_tasks": 3,
+      "report_date": "2026-05-17"
+    },
+    "tip": "所有演示数据均标记 raw_data.demo=true，可与真实数据区分"
+  }
+}
+```
+
+响应（403，生产环境）：
+
+```json
+{
+  "success": false,
+  "message": "生产环境禁止使用演示数据初始化接口"
+}
+```
+
+### 3.10 一键生成演示数据（采集方式）
+
+`POST /api/monitor-sources/demo/generate`
+
+行为：创建演示监控源并立即触发采集任务，生成完整的演示链路数据。仅在 `ENABLE_MOCK_COLLECTOR=true` 时可用，否则返回 403。
+
+响应（200）：
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "演示数据生成中，请稍后查看帖子池、评论池、线索池和日报",
+    "demo_sources": [
+      {"id": 1, "name": "演示 - 征信花了", "source_type": "keyword", "platform": "xhs"},
+      {"id": 2, "name": "演示 - 急用5万周转", "source_type": "keyword", "platform": "douyin"},
+      {"id": 3, "name": "演示 - 负债高能不能做", "source_type": "keyword", "platform": "zhihu"},
+      {"id": 4, "name": "演示 - 爆款规则", "source_type": "hot_post_rule", "platform": "xhs"}
+    ],
+    "crawl_tasks": [
+      {"task_id": 1, "source_id": 1, "queue_position": 0},
+      {"task_id": 2, "source_id": 2, "queue_position": 1}
+    ],
+    "tip": "所有演示数据均标记 raw_data.demo=true，可与真实数据区分"
+  }
+}
+```
+
+响应（403，未启用演示模式）：
+
+```json
+{
+  "success": false,
+  "message": "演示模式未启用，请设置 ENABLE_MOCK_COLLECTOR=true"
+}
+```
+
 ---
 
 ## 四、采集任务 Crawl Tasks
@@ -199,7 +277,10 @@
 
 响应：`success_response({items: [CrawlTaskOut], total, page, page_size})`。
 
-`CrawlTaskOut` 字段：`id, source_id, source_type, source_value, platform, status, limit_count, started_at, finished_at, error_message, post_count, comment_count, collected_posts, collected_comments, lead_count, discovered_competitor_count, created_at, updated_at`。
+`CrawlTaskOut` 字段：`id, source_id, source_type, source_value, platform, status, progress, limit_count, retry_count, max_retries, last_error_type, failure_type, started_at, finished_at, error_message, post_count, comment_count, collected_posts, collected_comments, lead_count, discovered_competitor_count, duplicate_post_count, duplicate_comment_count, created_at, updated_at`。
+
+- `failure_type`：失败类型分类，可选值：`media_crawler_unreachable` / `platform_not_supported` / `auth_required` / `captcha_or_risk_control` / `timeout` / `empty_result` / `parser_error` / `unknown`。仅在 `status == "failed"` 时有值。
+- `error_message`：脱敏后的错误信息，不暴露内部堆栈、密钥、Cookie、数据库连接串。
 
 ### 4.2 采集任务详情
 
@@ -207,7 +288,41 @@
 
 响应：`success_response(CrawlTaskOut)`；不存在返回 404。
 
-### 4.3 重跑失败任务
+### 4.3 失败类型元数据
+
+`GET /api/crawl-tasks/failure-types/meta`
+
+行为：返回所有失败类型的中文标签、描述和处理建议，供前端展示。
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "media_crawler_unreachable": {
+      "value": "media_crawler_unreachable",
+      "label": "采集服务不可用",
+      "description": "MediaCrawler API 服务未启动或无法连接",
+      "suggestion": "请启动 MediaCrawler 服务，或切换为演示模式（设置 ENABLE_MOCK_COLLECTOR=true）"
+    },
+    "platform_not_supported": {
+      "value": "platform_not_supported",
+      "label": "平台不支持",
+      "description": "当前采集器不支持该平台",
+      "suggestion": "请选择支持的平台（小红书、抖音、知乎），或等待后续版本开放更多平台"
+    },
+    "auth_required": { ... },
+    "captcha_or_risk_control": { ... },
+    "timeout": { ... },
+    "empty_result": { ... },
+    "parser_error": { ... },
+    "unknown": { ... }
+  }
+}
+```
+
+### 4.4 重跑失败任务
 
 `POST /api/crawl-tasks/{crawl_task_id}/rerun`
 
@@ -221,7 +336,7 @@
 - 任务非 failed → 400 `"only failed crawl tasks can be rerun"`
 - 关联监控源不存在 → 404 `"monitor source not found"`
 
-### 4.4 采集任务创建与运行（新接口）
+### 4.5 采集任务创建与运行（新接口）
 
 路由前缀：`/api/collection/tasks`
 
@@ -321,15 +436,21 @@
 - `lead_level`、`demand_type`、`risk_level`、`platform`、`status`、`source_type`
 - `source_post_id`（可选）：按来源帖子 ID 过滤
 - `source_comment_id`（可选）：按来源评论 ID 过滤
+- `is_duplicate`（可选，bool）：按重复标记过滤——`true` 仅返回重复线索，`false` 仅返回非重复线索，不传则返回全部
 - `keyword`：在 `content / user_name / reason` 等字段做模糊匹配（详见 `export_service.build_leads_query`）
 - `page` / `page_size`：同上
 
 响应：`success_response({items: [LeadOut], total, page, page_size})`，按 `id DESC`。
 
-`LeadOut` 字段：`id, platform, source_id, source_type, source_post_id, source_comment_id, source_post_title, source_post_url, user_name, content, lead_level, lead_score, demand_type, risk_level, evidence, reason, follow_up_script, status, created_at, updated_at`。
+`LeadOut` 字段：`id, platform, source_id, source_type, source_post_id, source_comment_id, source_post_title, source_post_url, user_name, user_profile_url, content, content_hash, lead_level, lead_score, demand_type, risk_level, evidence, reason, follow_up_script, status, is_duplicate, duplicate_group_id, duplicate_reason, notes, created_at, updated_at`。
 
 - `source_post_title`：来源帖子标题（冗余字段，由 `_enrich_lead_out` 填充）
 - `source_post_url`：来源帖子 URL（冗余字段，由 `_enrich_lead_out` 填充）
+- `user_profile_url`：评论者主页 URL，用于同用户相似评论去重
+- `content_hash`：评论内容 MD5 哈希，用于相同内容去重
+- `is_duplicate`：是否为疑似重复线索（`true` / `false`）
+- `duplicate_group_id`：重复组 ID，同一组内的线索互为重复，值为 `dup-` 前缀的 12 位随机字符串
+- `duplicate_reason`：重复原因，如 `"同用户相似评论(相似度80%)"` 或 `"相同内容重复"`
 
 `evidence` 是 JSON，结构由评分服务输出：
 
@@ -353,13 +474,19 @@
 
 `GET /api/leads/export`
 
-查询参数：与 7.1 完全一致（含 `source_post_id`、`source_comment_id`，除分页外），不分页，全量导出。
+查询参数：与 7.1 完全一致（含 `source_post_id`、`source_comment_id`、`is_duplicate`，除分页外），不分页，全量导出。
 
 响应：
 
 - `Content-Type: text/csv; charset=utf-8`
 - `Content-Disposition: attachment; filename=leads.csv`
 - Body：UTF-8 CSV 字节流（不走统一响应包装）
+
+CSV 列：`线索等级, 评分, 需求类型, 评论内容, 识别理由, 跟进话术, 风险提示, 来源平台, 状态, 备注, 是否重复, 重复原因, 重复组ID, 创建时间`
+
+- `是否重复`：`"是"` 或 `"否"`
+- `重复原因`：如 `"同用户相似评论(相似度80%)"` 或 `"相同内容重复"`，非重复线索为空
+- `重复组ID`：`dup-` 前缀的组标识，非重复线索为空
 
 ### 7.3 更新线索状态
 
@@ -371,7 +498,7 @@
 { "status": "contacted" }
 ```
 
-`status` 必须属于 `new / contacted / invalid / converted`，否则返回 400。
+`status` 必须属于 `new / contacted / interested / invalid / converted`，否则返回 400。
 
 响应：`success_response(LeadOut)`；线索不存在返回 404。
 

@@ -73,6 +73,7 @@ class TestMediaCrawlerMappers:
         assert posts[0].like_count == 800
         assert posts[0].is_hot is True
 
+    # Future: bilibili mapper test (platform not yet in MVP, mapper kept for forward compatibility)
     def test_bilibili_post_mapping(self):
         raw = {
             "posts": [
@@ -91,6 +92,7 @@ class TestMediaCrawlerMappers:
         assert posts[0].post_id == "BV1test"
         assert posts[0].like_count == 300
 
+    # Future: weibo mapper test (platform not yet in MVP, mapper kept for forward compatibility)
     def test_weibo_post_mapping(self):
         raw = {
             "posts": [
@@ -110,6 +112,7 @@ class TestMediaCrawlerMappers:
         assert posts[0].post_id == "wb001"
         assert posts[0].content == "微博内容"
 
+    # Future: kuaishou mapper test (platform not yet in MVP, mapper kept for forward compatibility)
     def test_kuaishou_post_mapping(self):
         raw = {
             "posts": [
@@ -146,6 +149,7 @@ class TestMediaCrawlerMappers:
         assert posts[0].post_id == "zh001"
         assert posts[0].title == "征信花了怎么办？"
 
+    # Future: tieba mapper test (platform not yet in MVP, mapper kept for forward compatibility)
     def test_tieba_post_mapping(self):
         raw = {
             "posts": [

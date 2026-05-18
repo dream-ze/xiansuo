@@ -10,12 +10,14 @@ SUPPORTED_PLATFORMS = {
     "xhs",
     "douyin",
     "zhihu",
+    # Future: kuaishou, bilibili, weibo, tieba
 }
 
 PLATFORM_LABELS = {
     "xhs": "小红书",
     "douyin": "抖音",
     "zhihu": "知乎",
+    # Future: kuaishou -> 快手, bilibili -> B站, weibo -> 微博, tieba -> 贴吧
 }
 
 
@@ -76,10 +78,11 @@ def _author_profile_url(platform: str, author_id: str | None, raw_user: dict[str
     url_templates = {
         "xhs": "https://www.xiaohongshu.com/user/profile/{id}",
         "douyin": "https://www.douyin.com/user/{id}",
+        "zhihu": "https://www.zhihu.com/people/{id}",
+        # Future: bilibili, weibo, kuaishou, tieba
         "bilibili": "https://space.bilibili.com/{id}",
         "weibo": "https://weibo.com/u/{id}",
         "kuaishou": "https://www.kuaishou.com/profile/{id}",
-        "zhihu": "https://www.zhihu.com/people/{id}",
         "tieba": "https://tieba.baidu.com/home/main?un={id}",
     }
     template = url_templates.get(platform, "")
@@ -96,10 +99,11 @@ def _build_post_url(platform: str, post_id: str, raw_data: dict[str, Any]) -> st
     url_templates = {
         "xhs": "https://www.xiaohongshu.com/explore/{id}",
         "douyin": "https://www.douyin.com/video/{id}",
+        "zhihu": "https://www.zhihu.com/question/{id}",
+        # Future: bilibili, weibo, kuaishou, tieba
         "bilibili": "https://www.bilibili.com/video/{id}",
         "weibo": "https://weibo.com/detail/{id}",
         "kuaishou": "https://www.kuaishou.com/short-video/{id}",
-        "zhihu": "https://www.zhihu.com/question/{id}",
         "tieba": "https://tieba.baidu.com/p/{id}",
     }
     template = url_templates.get(platform, "")
@@ -433,9 +437,10 @@ def _map_generic_comment(raw_comment: dict[str, Any], platform: str) -> Collecte
 _PLATFORM_MAPPERS: dict[str, Any] = {
     "xhs": _map_xhs_post,
     "douyin": _map_douyin_post,
+    "zhihu": _map_zhihu_post,
+    # Future: bilibili, weibo, kuaishou, tieba (mappers kept for forward compatibility)
     "bilibili": _map_bilibili_post,
     "weibo": _map_weibo_post,
     "kuaishou": _map_kuaishou_post,
-    "zhihu": _map_zhihu_post,
     "tieba": _map_tieba_post,
 }

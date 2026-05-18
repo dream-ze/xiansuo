@@ -99,15 +99,17 @@ def test_collection_task_keyword_run_creates_posts_comments_and_leads(client, db
         assert create_response.status_code == 200
         task_id = create_response.json()["data"]["id"]
 
-        run_response = client.post(f"/api/collection/tasks/{task_id}/run")
-        assert run_response.status_code == 200
-        payload = run_response.json()["data"]
-        assert payload["status"] == "success"
-        assert payload["collected_posts"] == 1
-        assert payload["collected_comments"] == 1
-        assert payload["post_count"] == 1
-        assert payload["comment_count"] == 1
-        assert payload["lead_count"] == 1
+        with patch("app.services.task_queue.CrawlTaskQueue.enqueue", return_value=1):
+            run_response = client.post(f"/api/collection/tasks/{task_id}/run")
+            assert run_response.status_code == 202
+
+        from app.services.collection_task_service import run_collection_task_by_id
+        from app.core.database import SessionLocal
+        exec_db = SessionLocal()
+        try:
+            run_collection_task_by_id(exec_db, task_id)
+        finally:
+            exec_db.close()
 
     session = db_cleanup
     assert session.query(Post).count() == 1
@@ -155,12 +157,17 @@ def test_collection_task_run_account_branch(client, db_cleanup):
         assert create_response.status_code == 200
         task_id = create_response.json()["data"]["id"]
 
-        run_response = client.post(f"/api/collection/tasks/{task_id}/run")
-        assert run_response.status_code == 200
-        payload = run_response.json()["data"]
-        assert payload["status"] == "success"
-        assert payload["post_count"] == 1
-        assert payload["comment_count"] == 1
+        with patch("app.services.task_queue.CrawlTaskQueue.enqueue", return_value=1):
+            run_response = client.post(f"/api/collection/tasks/{task_id}/run")
+            assert run_response.status_code == 202
+
+        from app.services.collection_task_service import run_collection_task_by_id
+        from app.core.database import SessionLocal
+        exec_db = SessionLocal()
+        try:
+            run_collection_task_by_id(exec_db, task_id)
+        finally:
+            exec_db.close()
 
     session = db_cleanup
     assert session.query(Post).filter(Post.post_id == "account-note-1").count() == 1
@@ -206,35 +213,49 @@ def test_collection_task_run_post_url_branch(client, db_cleanup):
         assert create_response.status_code == 200
         task_id = create_response.json()["data"]["id"]
 
-        run_response = client.post(f"/api/collection/tasks/{task_id}/run")
-        assert run_response.status_code == 200
-        payload = run_response.json()["data"]
-        assert payload["status"] == "success"
-        assert payload["post_count"] == 1
-        assert payload["comment_count"] == 1
+        with patch("app.services.task_queue.CrawlTaskQueue.enqueue", return_value=1):
+            run_response = client.post(f"/api/collection/tasks/{task_id}/run")
+            assert run_response.status_code == 202
+
+        from app.services.collection_task_service import run_collection_task_by_id
+        from app.core.database import SessionLocal
+        exec_db = SessionLocal()
+        try:
+            run_collection_task_by_id(exec_db, task_id)
+        finally:
+            exec_db.close()
 
     session = db_cleanup
     assert session.query(Post).filter(Post.post_id == "post-url-note-1").count() == 1
 
 
-def test_collection_task_unsupported_platform_marks_failed(client, db_cleanup):
+def test_collection_task_unsupported_platform_rejected_at_create(client, db_cleanup):
     create_response = client.post(
         "/api/collection/tasks",
         json={
-            "platform": "unsupported_platform",
+            "platform": "kuaishou",
             "source_type": "keyword",
             "source_value": "征信花了",
             "limit_count": 1,
         },
     )
-    assert create_response.status_code == 200
-    task_id = create_response.json()["data"]["id"]
+    assert create_response.status_code == 400
+    assert "当前 MVP 仅支持 xhs/douyin/zhihu" in create_response.json()["message"]
 
-    run_response = client.post(f"/api/collection/tasks/{task_id}/run")
-    assert run_response.status_code == 200
-    payload = run_response.json()["data"]
-    assert payload["status"] == "failed"
-    assert payload.get("error_message")
+
+@pytest.mark.parametrize("platform", ["bilibili", "weibo", "tieba", "other"])
+def test_collection_task_other_unsupported_platforms_rejected(client, db_cleanup, platform):
+    create_response = client.post(
+        "/api/collection/tasks",
+        json={
+            "platform": platform,
+            "source_type": "keyword",
+            "source_value": "测试",
+            "limit_count": 1,
+        },
+    )
+    assert create_response.status_code == 400
+    assert "当前 MVP 仅支持 xhs/douyin/zhihu" in create_response.json()["message"]
 
 
 def test_monitor_source_crawl_media_crawler_keyword(client, db_cleanup):
@@ -261,15 +282,124 @@ def test_monitor_source_crawl_media_crawler_keyword(client, db_cleanup):
         assert source_resp.status_code == 200
         source_id = source_resp.json()["data"]["id"]
 
-        crawl_resp = client.post(f"/api/monitor-sources/{source_id}/crawl")
-        assert crawl_resp.status_code == 200
-        payload = crawl_resp.json()["data"]
+        with patch("app.services.task_queue.CrawlTaskQueue.enqueue", return_value=1):
+            crawl_resp = client.post(f"/api/monitor-sources/{source_id}/crawl")
+            assert crawl_resp.status_code == 202
+            task_id = crawl_resp.json()["data"]["id"]
 
-        assert payload["status"] == "success"
-        assert payload["post_count"] == 1
-        assert payload["comment_count"] == 1
-        assert payload["lead_count"] == 1
+        from app.core.database import SessionLocal
+        from app.models.crawl_task import CrawlTask
+        from app.models.monitor_source import MonitorSource
+        from app.services.crawl_pipeline_service import run_monitor_source_crawl
+        exec_db = SessionLocal()
+        try:
+            task = exec_db.query(CrawlTask).filter(CrawlTask.id == task_id).first()
+            source = exec_db.query(MonitorSource).filter(MonitorSource.id == source_id).first()
+            if task and source:
+                run_monitor_source_crawl(exec_db, source, crawl_task=task)
+        finally:
+            exec_db.close()
 
     session = db_cleanup
     assert session.query(Post).filter(Post.source_id == source_id).count() >= 1
     assert session.query(Comment).count() >= 1
+
+
+@pytest.mark.parametrize("platform", ["kuaishou", "bilibili", "weibo", "tieba", "other"])
+def test_monitor_source_unsupported_platform_rejected(client, db_cleanup, platform):
+    source_resp = client.post(
+        "/api/monitor-sources",
+        json={
+            "source_type": "keyword",
+            "platform": platform,
+            "name": "不支持的平台",
+            "value": "测试",
+            "config": {
+                "collector_type": "media_crawler",
+                "login_type": "qrcode",
+            },
+            "enabled": True,
+        },
+    )
+    assert source_resp.status_code == 400
+    assert "当前 MVP 仅支持 xhs/douyin/zhihu" in source_resp.json()["message"]
+
+
+def _create_test_lead(db):
+    from app.models.monitor_source import MonitorSource as MS
+
+    source = MS(
+        source_type="keyword",
+        platform="xhs",
+        name="线索状态测试源",
+        value="征信花了",
+        config={"collector_type": "media_crawler"},
+        enabled=True,
+    )
+    db.add(source)
+    db.flush()
+
+    lead = Lead(
+        platform="xhs",
+        source_id=source.id,
+        source_type="keyword",
+        user_name="测试用户",
+        content="征信花了负债高还能贷款周转吗",
+        lead_level="A",
+        lead_score=85.0,
+        demand_type="借款需求",
+        risk_level="mid",
+        evidence={"keywords": ["征信花", "负债高"]},
+        reason="包含借款需求关键词",
+        follow_up_script="建议跟进",
+        status="new",
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+def test_lead_status_update_to_interested(client, db_cleanup):
+    lead = _create_test_lead(db_cleanup)
+
+    update_resp = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "interested"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["data"]["status"] == "interested"
+
+
+@pytest.mark.parametrize("status", ["new", "contacted", "interested", "invalid", "converted"])
+def test_lead_status_update_all_valid_statuses(client, db_cleanup, status):
+    lead = _create_test_lead(db_cleanup)
+
+    update_resp = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": status},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["data"]["status"] == status
+
+
+def test_lead_status_update_invalid_status_rejected(client, db_cleanup):
+    lead = _create_test_lead(db_cleanup)
+
+    update_resp = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "qualified"},
+    )
+    assert update_resp.status_code == 400
+
+
+def test_lead_status_update_with_notes(client, db_cleanup):
+    lead = _create_test_lead(db_cleanup)
+
+    update_resp = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "interested", "notes": "客户表示有意向"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["data"]["status"] == "interested"
+    assert update_resp.json()["data"]["notes"] == "客户表示有意向"

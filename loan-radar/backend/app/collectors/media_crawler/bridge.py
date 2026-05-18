@@ -12,11 +12,8 @@ from app.collectors.base import CollectionAuthError, CollectionRequestError
 PLATFORM_NAME_MAP: dict[str, str] = {
     "xhs": "xhs",
     "douyin": "dy",
-    "kuaishou": "ks",
-    "bilibili": "bili",
-    "weibo": "wb",
-    "tieba": "tieba",
     "zhihu": "zhihu",
+    # Future: kuaishou -> ks, bilibili -> bili, weibo -> wb, tieba -> tieba
 }
 
 CRAWL_TYPE_MAP: dict[str, str] = {
@@ -129,7 +126,7 @@ class MediaCrawlerBridge:
             resp = httpx.post(
                 f"{self.api_base_url}/api/crawl-tasks",
                 json=payload,
-                timeout=30,
+                timeout=120,
             )
             return self._handle_response(resp)
         except httpx.ConnectError as error:
@@ -148,7 +145,7 @@ class MediaCrawlerBridge:
         try:
             resp = httpx.get(
                 f"{self.api_base_url}/api/crawl-tasks/{task_id}",
-                timeout=15,
+                timeout=30,
             )
             return self._handle_response(resp)
         except httpx.ConnectError as error:

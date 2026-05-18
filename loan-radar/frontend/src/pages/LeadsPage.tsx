@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   exportLeadsCsv,
+  convertLeadToCrm,
   getLeads,
   updateLeadStatus,
   type Lead,
@@ -11,18 +12,18 @@ import {
 import { showToast } from "../components/ToastContainer";
 
 const LEAD_LEVEL_OPTIONS = ["", "A", "B", "C", "D"];
-const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
+const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu"];
 const STATUS_OPTIONS = ["", "new", "contacted", "interested", "invalid", "converted"];
+const DUPLICATE_FILTER_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "false", label: "非重复线索" },
+  { value: "true", label: "重复线索" },
+];
 
 const PLATFORM_LABELS: Record<string, string> = {
   xhs: "小红书",
   douyin: "抖音",
-  kuaishou: "快手",
-  bilibili: "B站",
-  weibo: "微博",
-  tieba: "贴吧",
   zhihu: "知乎",
-  other: "其他",
 };
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
@@ -59,6 +60,45 @@ const DIMENSION_LABELS: Record<string, string> = {
   authenticity: "真实性",
   risk_penalty: "风险扣分",
 };
+
+function highlightKeywords(text: string | null | undefined, keywords: string[]) {
+  if (!text || keywords.length === 0) return <>{text || "-"}</>;
+  const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`(${escaped.join("|")})`, "gi");
+  const parts = text.split(pattern);
+  return (
+    <>
+      {parts.map((part, i) =>
+        keywords.some((k) => k.toLowerCase() === part.toLowerCase()) ? (
+          <mark key={i} className="keyword-highlight">{part}</mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+function getMatchedWords(evidence: Lead["evidence"]): string[] {
+  if (!evidence || typeof evidence !== "object") return [];
+  const typed = evidence as Record<string, unknown>;
+  const words = typed.matched_words;
+  return Array.isArray(words) ? words : [];
+}
+
+function getAmounts(evidence: Lead["evidence"]): string[] {
+  if (!evidence || typeof evidence !== "object") return [];
+  const typed = evidence as Record<string, unknown>;
+  const amounts = typed.amounts;
+  return Array.isArray(amounts) ? amounts : [];
+}
+
+function getScoreBreakdown(evidence: Lead["evidence"]): Record<string, number> | null {
+  if (!evidence || typeof evidence !== "object") return null;
+  const typed = evidence as Record<string, unknown>;
+  const sb = typed.score_breakdown;
+  return sb && typeof sb === "object" ? (sb as Record<string, number>) : null;
+}
 
 function buildEvidenceSections(evidence: Lead["evidence"]) {
   if (!evidence || typeof evidence !== "object") {
@@ -123,27 +163,6 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
-function ScoreBreakdownGrid({ evidence }: { evidence: Lead["evidence"] }) {
-  if (!evidence || typeof evidence !== "object") return null;
-  const typedEvidence = evidence as Record<string, unknown>;
-  const scoreBreakdown = typedEvidence.score_breakdown;
-  if (!scoreBreakdown || typeof scoreBreakdown !== "object") return null;
-
-  const breakdown = scoreBreakdown as Record<string, number>;
-  return (
-    <div className="score-breakdown-grid">
-      {Object.entries(breakdown).map(([key, val]) => (
-        <div key={key} className="score-breakdown-item">
-          <span>{DIMENSION_LABELS[key] || key}</span>
-          <span className={val > 0 ? "score-positive" : val < 0 ? "score-negative" : "score-zero"}>
-            {val > 0 ? "+" : ""}{val}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function platformBadgeClass(platform: string) {
   return `platform-badge platform-${platform}`;
 }
@@ -179,12 +198,14 @@ export default function LeadsPage() {
       keyword: sp.get("keyword") || "",
       source_post_id: sp.get("source_post_id") ? Number(sp.get("source_post_id")) : undefined,
       source_comment_id: sp.get("source_comment_id") ? Number(sp.get("source_comment_id")) : undefined,
+      is_duplicate: sp.get("is_duplicate") || "",
     };
   });
   const [draftStatuses, setDraftStatuses] = useState<Record<number, string>>({});
   const [draftNotes, setDraftNotes] = useState<Record<number, string>>({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [convertingId, setConvertingId] = useState<number | null>(null);
 
   const hasItems = useMemo(() => items.length > 0, [items]);
 
@@ -204,6 +225,7 @@ export default function LeadsPage() {
         keyword: nextFilters.keyword || undefined,
         source_post_id: nextFilters.source_post_id || undefined,
         source_comment_id: nextFilters.source_comment_id || undefined,
+        is_duplicate: nextFilters.is_duplicate === "true" ? true : nextFilters.is_duplicate === "false" ? false : undefined,
       };
 
       const [listResult, allResult, aResult, bResult, cResult, dResult] = await Promise.all([
@@ -271,6 +293,7 @@ export default function LeadsPage() {
       keyword: "",
       source_post_id: undefined,
       source_comment_id: undefined,
+      is_duplicate: "",
     };
     setFilters(nextFilters);
     setPage(1);
@@ -333,6 +356,7 @@ export default function LeadsPage() {
         keyword: filters.keyword || undefined,
         source_post_id: filters.source_post_id || undefined,
         source_comment_id: filters.source_comment_id || undefined,
+        is_duplicate: filters.is_duplicate === "true" ? true : filters.is_duplicate === "false" ? false : undefined,
       });
       downloadBlob(blob, "leads.csv");
       showToast("success", "导出成功", "CSV 文件已下载");
@@ -344,13 +368,41 @@ export default function LeadsPage() {
     }
   }
 
+  async function handleConvertToCrm(lead: Lead) {
+    const ownerName = window.prompt("请输入负责人（可留空为未分配）", "");
+    setConvertingId(lead.id);
+    setError(null);
+    try {
+      const result = await convertLeadToCrm(lead.id, {
+        owner_name: ownerName?.trim() || null,
+      });
+      showToast("success", "已转入 CRM", `客户：${result.customer.name}，已生成首跟进任务`);
+      await loadData(page, filters);
+      setDetailLead((current) =>
+        current?.id === lead.id
+          ? {
+              ...current,
+              crm_customer_id: result.customer.id,
+              crm_opportunity_id: result.opportunity.id,
+              converted_to_crm_at: new Date().toISOString(),
+              status: "contacted",
+            }
+          : current,
+      );
+    } catch (convertError) {
+      const message = convertError instanceof Error ? convertError.message : "转入 CRM 失败";
+      setError(message);
+      showToast("error", "转入 CRM 失败", message);
+    } finally {
+      setConvertingId(null);
+    }
+  }
+
   function handleGoToPost(lead: Lead) {
     if (lead.source_post_id) {
       navigate(`/posts?highlight=${lead.source_post_id}`);
     }
   }
-
-  const evidenceSections = buildEvidenceSections(detailLead?.evidence);
 
   return (
     <main className="page-shell">
@@ -433,6 +485,16 @@ export default function LeadsPage() {
               ))}
             </select>
           </label>
+          <label>
+            <span>重复筛选</span>
+            <select value={String(filters.is_duplicate ?? "")} onChange={(event) => setFilters((current) => ({ ...current, is_duplicate: event.target.value }))}>
+              {DUPLICATE_FILTER_OPTIONS.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 
@@ -480,6 +542,7 @@ export default function LeadsPage() {
                   <th>平台</th>
                   <th>来源帖子</th>
                   <th>风险</th>
+                  <th>重复</th>
                   <th>状态</th>
                   <th>备注</th>
                   <th>操作</th>
@@ -518,28 +581,19 @@ export default function LeadsPage() {
                       ) : "-"}
                     </td>
                     <td>
+                      {lead.is_duplicate ? (
+                        <span className="tag tag-warning" title={lead.duplicate_reason || ""}>重复</span>
+                      ) : (
+                        <span className="text-muted">-</span>
+                      )}
+                    </td>
+                    <td>
                       <StatusBadge status={lead.status} />
                     </td>
-                    <td>
-                      <input
-                        type="text"
-                        className="notes-input"
-                        value={draftNotes[lead.id] ?? lead.notes ?? ""}
-                        onChange={(event) => setDraftNotes((current) => ({ ...current, [lead.id]: event.target.value }))}
-                        placeholder="添加备注"
-                      />
-                    </td>
+                    <td className="cell-break">{truncate(lead.notes, 20)}</td>
                     <td>
                       <div className="lead-actions">
-                        <button type="button" className="btn-sm" onClick={() => void handleViewEvidence(lead)}>证据链</button>
-                        <select value={draftStatuses[lead.id] ?? lead.status} onChange={(event) => setDraftStatuses((current) => ({ ...current, [lead.id]: event.target.value }))}>
-                          {Object.entries(LEAD_STATUS_LABELS).map(([status, label]) => (
-                            <option key={status} value={status}>{label}</option>
-                          ))}
-                        </select>
-                        <button type="button" className="btn-sm" onClick={() => void handleUpdateStatus(lead)} disabled={busyId === lead.id}>
-                          {busyId === lead.id ? "保存中..." : "保存"}
-                        </button>
+                        <button type="button" className="btn-primary btn-sm" onClick={() => void handleViewEvidence(lead)}>查看详情</button>
                       </div>
                     </td>
                   </tr>
@@ -550,97 +604,279 @@ export default function LeadsPage() {
         ) : null}
       </section>
 
-      {detailOpen && detailLead ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setDetailOpen(false)}>
-          <div className="modal-card" role="dialog" aria-modal="true" aria-label="线索证据链" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3>证据链</h3>
-                <p>
-                  线索 ID：{detailLead.id} · 等级：<span className={`lead-level level-${detailLead.lead_level}`}>{detailLead.lead_level}</span> · 评分：<strong>{detailLead.lead_score}</strong>
-                </p>
+      {detailOpen && detailLead ? (() => {
+        const matchedWords = getMatchedWords(detailLead.evidence);
+        const amounts = getAmounts(detailLead.evidence);
+        const scoreBreakdown = getScoreBreakdown(detailLead.evidence);
+        const evidenceSections = buildEvidenceSections(detailLead.evidence);
+        const hasEvidence = evidenceSections.length > 0;
+
+        return (
+          <div className="modal-backdrop" role="presentation" onClick={() => setDetailOpen(false)}>
+            <div className="drawer-card" role="dialog" aria-modal="true" aria-label="线索详情" onClick={(event) => event.stopPropagation()}>
+              <div className="drawer-header">
+                <div className="drawer-header-left">
+                  <h3>线索详情</h3>
+                  <p className="drawer-subtitle">
+                    <span className={`lead-level level-${detailLead.lead_level}`}>{detailLead.lead_level}</span>
+                    <span className="drawer-subtitle-sep">·</span>
+                    <span>评分 <strong>{detailLead.lead_score}</strong></span>
+                    <span className="drawer-subtitle-sep">·</span>
+                    <span className={platformBadgeClass(detailLead.platform)}>{PLATFORM_LABELS[detailLead.platform] || detailLead.platform}</span>
+                    <span className="drawer-subtitle-sep">·</span>
+                    <span className="text-muted">ID: {detailLead.id}</span>
+                  </p>
+                </div>
+                <button type="button" className="drawer-close-btn" onClick={() => setDetailOpen(false)}>✕</button>
               </div>
-              <button type="button" onClick={() => setDetailOpen(false)}>关闭</button>
-            </div>
 
-            {detailLoading ? <p className="state-text">加载中...</p> : null}
-            {detailError ? <p className="inline-error">{detailError}</p> : null}
+              {detailLoading ? <p className="state-text">加载中...</p> : null}
+              {detailError ? <p className="inline-error">{detailError}</p> : null}
 
-            {!detailLoading && !detailError ? (
-              <div className="modal-body">
-                <div className="detail-grid compact">
-                  <div><span>评论内容</span><strong>{detailLead.content || "-"}</strong></div>
-                  <div><span>识别理由</span><strong>{detailLead.reason || "-"}</strong></div>
-                  <div><span>跟进话术</span><strong>{detailLead.follow_up_script || "-"}</strong></div>
-                  <div>
-                    <span>风险等级</span>
-                    <strong>
-                      {detailLead.risk_level === "high" ? (
-                        <span className="tag tag-danger">高风险</span>
-                      ) : detailLead.risk_level === "mid" ? (
-                        <span className="tag tag-warning">中风险</span>
-                      ) : detailLead.risk_level === "low" ? (
-                        <span className="tag tag-success">低风险</span>
-                      ) : "-"}
-                    </strong>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>评分概览</h4>
-                  <ScoreBar score={detailLead.lead_score} />
-                  <ScoreBreakdownGrid evidence={detailLead.evidence} />
-                </div>
-
-                {detailLead.source_post_title ? (
-                  <div className="source-post-section">
-                    <h4>来源帖子</h4>
+              {!detailLoading && !detailError ? (
+                <div className="drawer-body">
+                  <section className="drawer-section">
+                    <div className="card-header-row">
+                      <div>
+                        <h4 className="drawer-section-title">CRM 转化</h4>
+                        <p className="text-muted">
+                          {detailLead.crm_customer_id ? "该线索已进入 CRM，可继续推进客户和商机。" : "确认有效后可人工转入 CRM，并自动生成客户、商机和首跟进任务。"}
+                        </p>
+                      </div>
+                      {detailLead.crm_customer_id ? (
+                        <button type="button" className="btn-secondary btn-sm" onClick={() => navigate("/crm/customers")}>
+                          查看 CRM
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() => void handleConvertToCrm(detailLead)}
+                          disabled={convertingId === detailLead.id}
+                        >
+                          {convertingId === detailLead.id ? "转入中..." : "转入 CRM"}
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">基本信息</h4>
                     <div className="detail-grid compact">
-                      <div><span>帖子标题</span><strong>{detailLead.source_post_title}</strong></div>
-                      <div><span>帖子链接</span><strong>
-                        {detailLead.source_post_url ? (
-                          <a href={detailLead.source_post_url} target="_blank" rel="noreferrer">打开原帖</a>
-                        ) : "-"}
-                      </strong></div>
+                      <div className="detail-field">
+                        <span className="detail-label">用户名</span>
+                        <strong className="detail-value">{detailLead.user_name || "-"}</strong>
+                      </div>
+                      <div className="detail-field">
+                        <span className="detail-label">来源平台</span>
+                        <strong className="detail-value"><span className={platformBadgeClass(detailLead.platform)}>{PLATFORM_LABELS[detailLead.platform] || detailLead.platform}</span></strong>
+                      </div>
+                      <div className="detail-field">
+                        <span className="detail-label">需求类型</span>
+                        <strong className="detail-value">{detailLead.demand_type ? <span className="tag">{detailLead.demand_type}</span> : "-"}</strong>
+                      </div>
+                      <div className="detail-field">
+                        <span className="detail-label">风险等级</span>
+                        <strong className="detail-value">
+                          {detailLead.risk_level === "high" ? (
+                            <span className="tag tag-danger">高风险</span>
+                          ) : detailLead.risk_level === "mid" ? (
+                            <span className="tag tag-warning">中风险</span>
+                          ) : detailLead.risk_level === "low" ? (
+                            <span className="tag tag-success">低风险</span>
+                          ) : "-"}
+                        </strong>
+                      </div>
+                      <div className="detail-field">
+                        <span className="detail-label">重复标记</span>
+                        <strong className="detail-value">
+                          {detailLead.is_duplicate ? (
+                            <span className="tag tag-warning">疑似重复</span>
+                          ) : (
+                            <span className="tag tag-success">非重复</span>
+                          )}
+                        </strong>
+                      </div>
                     </div>
-                    <div className="action-row" style={{ marginTop: 8 }}>
-                      <button type="button" className="btn-sm" onClick={() => { setDetailOpen(false); handleGoToPost(detailLead); }}>在帖子池中查看</button>
-                    </div>
-                  </div>
-                ) : null}
+                  </section>
 
-                <div className="evidence-list">
-                  <h4>评分证据</h4>
-                  {evidenceSections.length > 0 ? evidenceSections.map((section) => (
-                    <section key={section.title} className="evidence-block">
-                      <h4>{section.title}</h4>
-                      {section.type === "warning" ? (
-                        <div className="evidence-warning">{section.value}</div>
-                      ) : section.type === "danger" ? (
-                        <div className="evidence-danger">{section.value}</div>
-                      ) : section.type === "tags" ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {section.value.split("、").map((word) => (
-                            <span key={word} className="tag">{word}</span>
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">来源帖子</h4>
+                    <div className="detail-grid compact">
+                      <div className="detail-field">
+                        <span className="detail-label">帖子标题</span>
+                        <strong className="detail-value">{detailLead.source_post_title || "-"}</strong>
+                      </div>
+                      <div className="detail-field">
+                        <span className="detail-label">帖子链接</span>
+                        <strong className="detail-value">
+                          {detailLead.source_post_url ? (
+                            <a href={detailLead.source_post_url} target="_blank" rel="noreferrer">打开原帖 ↗</a>
+                          ) : "-"}
+                        </strong>
+                      </div>
+                    </div>
+                    {detailLead.source_post_id ? (
+                      <div style={{ marginTop: 8 }}>
+                        <button type="button" className="btn-sm" onClick={() => { setDetailOpen(false); handleGoToPost(detailLead); }}>在帖子池中查看</button>
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">评论原文</h4>
+                    <div className="detail-comment-box">
+                      {highlightKeywords(detailLead.content, matchedWords)}
+                    </div>
+                    {detailLead.is_duplicate && detailLead.duplicate_reason ? (
+                      <div className="duplicate-info-box">
+                        <span className="tag tag-warning">重复原因</span>
+                        <span className="duplicate-reason-text">{detailLead.duplicate_reason}</span>
+                        {detailLead.duplicate_group_id ? (
+                          <span className="duplicate-group-id">组: {detailLead.duplicate_group_id}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">线索评分</h4>
+                    <div className="detail-score-area">
+                      <div className="detail-score-header">
+                        <span className={`lead-level level-${detailLead.lead_level} lead-level-lg`}>{detailLead.lead_level}级</span>
+                        <ScoreBar score={detailLead.lead_score} />
+                      </div>
+                      {scoreBreakdown ? (
+                        <div className="score-breakdown-grid">
+                          {Object.entries(scoreBreakdown).map(([key, val]) => (
+                            <div key={key} className="score-breakdown-item">
+                              <span>{DIMENSION_LABELS[key] || key}</span>
+                              <span className={val > 0 ? "score-positive" : val < 0 ? "score-negative" : "score-zero"}>
+                                {val > 0 ? "+" : ""}{val}
+                              </span>
+                            </div>
                           ))}
                         </div>
-                      ) : section.type === "breakdown" ? (
-                        <ScoreBreakdownGrid evidence={detailLead.evidence} />
-                      ) : (
-                        <pre>{section.value}</pre>
-                      )}
-                    </section>
-                  )) : (
-                    <div className="state-panel state-empty">
-                      <p>暂无证据链数据。</p>
+                      ) : null}
                     </div>
-                  )}
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">判断理由</h4>
+                    <div className="detail-text-block">
+                      {detailLead.reason || "暂无判断理由"}
+                    </div>
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">跟进话术</h4>
+                    <div className="detail-text-block detail-text-block-accent">
+                      {detailLead.follow_up_script || "暂无跟进话术"}
+                    </div>
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">证据链</h4>
+                    {hasEvidence ? (
+                      <div className="evidence-list">
+                        {matchedWords.length > 0 ? (
+                          <div className="evidence-block">
+                            <h4>命中关键词</h4>
+                            <div className="evidence-tags">
+                              {matchedWords.map((word) => (
+                                <span key={word} className="tag tag-keyword">{word}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {amounts.length > 0 ? (
+                          <div className="evidence-block">
+                            <h4>金额信息</h4>
+                            <div className="evidence-tags">
+                              {amounts.map((amt) => (
+                                <span key={amt} className="tag tag-amount">{amt}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {evidenceSections
+                          .filter((s) => s.type === "warning")
+                          .map((section) => (
+                            <div key={section.title} className="evidence-block">
+                              <h4>{section.title}</h4>
+                              <div className="evidence-warning">{section.value}</div>
+                            </div>
+                          ))}
+                        {evidenceSections
+                          .filter((s) => s.type === "danger")
+                          .map((section) => (
+                            <div key={section.title} className="evidence-block">
+                              <h4>{section.title}</h4>
+                              <div className="evidence-danger">{section.value}</div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <div className="state-panel state-empty" style={{ padding: "16px" }}>
+                        <p>暂无证据链</p>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">跟进状态</h4>
+                    <div className="detail-status-row">
+                      <div className="detail-status-select">
+                        <label>
+                          <span className="detail-label">当前状态</span>
+                          <select
+                            value={draftStatuses[detailLead.id] ?? detailLead.status}
+                            onChange={(event) => setDraftStatuses((current) => ({ ...current, [detailLead.id]: event.target.value }))}
+                          >
+                            {Object.entries(LEAD_STATUS_LABELS).map(([status, label]) => (
+                              <option key={status} value={status}>{label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="detail-status-action">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() => void handleUpdateStatus(detailLead)}
+                          disabled={busyId === detailLead.id}
+                        >
+                          {busyId === detailLead.id ? "保存中..." : "保存状态"}
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="drawer-section">
+                    <h4 className="drawer-section-title">备注</h4>
+                    <textarea
+                      className="detail-notes-textarea"
+                      value={draftNotes[detailLead.id] ?? detailLead.notes ?? ""}
+                      onChange={(event) => setDraftNotes((current) => ({ ...current, [detailLead.id]: event.target.value }))}
+                      placeholder="添加备注信息..."
+                      rows={3}
+                    />
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => void handleUpdateStatus(detailLead)}
+                        disabled={busyId === detailLead.id}
+                      >
+                        {busyId === detailLead.id ? "保存中..." : "保存备注"}
+                      </button>
+                    </div>
+                  </section>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
-        </div>
-      ) : null}
+        );
+      })() : null}
     </main>
   );
 }

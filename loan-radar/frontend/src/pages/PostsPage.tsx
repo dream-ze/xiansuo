@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getPosts, type Post, type PostQueryParams } from "../api/client";
 
-const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
+const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu"];
 const SOURCE_TYPE_OPTIONS = ["", "keyword", "competitor_account", "manual_post", "hot_post_rule"];
 const HOT_OPTIONS = ["", "true", "false"];
 

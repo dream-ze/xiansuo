@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.api.routes.monitor_sources import get_db
 from app.models.lead import Lead
 from app.models.post import Post
+from app.schemas.crm import LeadConvertToCrmIn
 from app.schemas.lead import LeadOut
+from app.services.crm_service import convert_lead_to_crm, customer_to_dict, opportunity_to_dict, task_to_dict
 from app.services.export_service import (
     VALID_LEAD_STATUSES,
     build_leads_query,
@@ -53,6 +55,8 @@ def export_leads_endpoint(
     keyword: str | None = None,
     source_post_id: int | None = None,
     source_comment_id: int | None = None,
+    is_duplicate: bool | None = None,
+    converted_to_crm: bool | None = None,
     db: Session = Depends(get_db),
 ):
     query = build_leads_query(
@@ -66,6 +70,8 @@ def export_leads_endpoint(
         keyword=keyword,
         source_post_id=source_post_id,
         source_comment_id=source_comment_id,
+        is_duplicate=is_duplicate,
+        converted_to_crm=converted_to_crm,
     )
     leads = query.order_by(Lead.id.desc()).all()
     csv_bytes = export_leads_csv(leads)
@@ -87,6 +93,8 @@ def list_leads_endpoint(
     keyword: str | None = None,
     source_post_id: int | None = None,
     source_comment_id: int | None = None,
+    is_duplicate: bool | None = None,
+    converted_to_crm: bool | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     db: Session = Depends(get_db),
@@ -102,6 +110,8 @@ def list_leads_endpoint(
         keyword=keyword,
         source_post_id=source_post_id,
         source_comment_id=source_comment_id,
+        is_duplicate=is_duplicate,
+        converted_to_crm=converted_to_crm,
     )
     total = query.count()
     leads = (
@@ -144,3 +154,32 @@ def update_lead_status_endpoint(
 
     data = _enrich_lead_out(lead, db)
     return success_response(data)
+
+
+@router.post("/{lead_id}/convert-to-crm")
+def convert_lead_to_crm_endpoint(
+    lead_id: int,
+    payload: LeadConvertToCrmIn,
+    db: Session = Depends(get_db),
+):
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if lead is None:
+        return not_found_response()
+
+    try:
+        customer, opportunity, task = convert_lead_to_crm(
+            db=db,
+            lead=lead,
+            owner_name=payload.owner_name,
+            next_follow_up_at=payload.next_follow_up_at,
+        )
+    except ValueError as exc:
+        return validation_error_response(str(exc))
+
+    return success_response(
+        {
+            "customer": customer_to_dict(customer),
+            "opportunity": opportunity_to_dict(opportunity, db),
+            "task": task_to_dict(task, db),
+        }
+    )

@@ -1,0 +1,104 @@
+{
+  "mode": "demo",
+  "base_url": "http://127.0.0.1:8001",
+  "started_at": "2026-05-16T14:04:17.668653+00:00",
+  "finished_at": "2026-05-16T14:04:20.034377+00:00",
+  "result": "PASS",
+  "total_steps": 9,
+  "passed_steps": 9,
+  "failed_steps": 0,
+  "steps": [
+    {
+      "step_no": 1,
+      "title": "健康检查 /health",
+      "passed": true,
+      "detail": "base_url=http://127.0.0.1:8001, status=ok",
+      "duration_ms": 36,
+      "suggestion": ""
+    },
+    {
+      "step_no": 2,
+      "title": "创建监控源",
+      "passed": true,
+      "detail": "source_id=193, collector=mock",
+      "duration_ms": 94,
+      "suggestion": ""
+    },
+    {
+      "step_no": 3,
+      "title": "触发采集",
+      "passed": true,
+      "detail": "crawl_task_id=184, status=pending, queue_position=1",
+      "duration_ms": 16,
+      "suggestion": ""
+    },
+    {
+      "step_no": 4,
+      "title": "查询采集任务状态",
+      "passed": true,
+      "detail": "status=success, posts=5, comments=30, leads=25",
+      "duration_ms": 2046,
+      "suggestion": ""
+    },
+    {
+      "step_no": 5,
+      "title": "查询帖子池",
+      "passed": true,
+      "detail": "posts_total=5, page_items=5",
+      "duration_ms": 32,
+      "suggestion": ""
+    },
+    {
+      "step_no": 6,
+      "title": "查询评论池",
+      "passed": true,
+      "detail": "comments_total=30, page_items=10",
+      "duration_ms": 34,
+      "suggestion": ""
+    },
+    {
+      "step_no": 7,
+      "title": "查询线索池",
+      "passed": true,
+      "detail": "leads_total=25, page_items=25, levels=['B', 'C']",
+      "duration_ms": 57,
+      "suggestion": ""
+    },
+    {
+      "step_no": 8,
+      "title": "生成今日报告",
+      "passed": true,
+      "detail": "report_date=2026-05-16, leads=25, A级=0",
+      "duration_ms": 35,
+      "suggestion": ""
+    },
+    {
+      "step_no": 9,
+      "title": "导出 CSV",
+      "passed": true,
+      "detail": "csv_rows=26, data_rows=25, headers=['线索等级', '评分', '需求类型', '评论内容', '识别理由', '跟进话术', '风险提示', '来源平台', '状态', '备注', '创建时间']",
+      "duration_ms": 10,
+      "suggestion": ""
+    }
+  ],
+  "key_metrics": {
+    "backend_health": "ok",
+    "source_id": 193,
+    "crawl_task_id": 184,
+    "task_status": "success",
+    "task_post_count": 5,
+    "task_comment_count": 30,
+    "task_lead_count": 25,
+    "posts_total": 5,
+    "comments_total": 30,
+    "leads_total": 25,
+    "lead_levels": "B, C",
+    "report_date": "2026-05-16",
+    "report_lead_count": 25,
+    "report_a_count": 0,
+    "csv_headers": 11,
+    "csv_data_rows": 25
+  },
+  "failure_reason": "",
+  "fix_suggestion": ""
+}

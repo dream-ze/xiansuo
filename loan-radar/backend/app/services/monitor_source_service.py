@@ -29,6 +29,8 @@ MEDIA_CRAWLER_PLATFORMS = {
     "zhihu",
 }
 
+_MVP_PLATFORM_ERROR_MSG = "当前 MVP 仅支持 xhs/douyin/zhihu，其他平台暂未开放"
+
 
 def _collector_type(config) -> str:
     if isinstance(config, dict):
@@ -50,15 +52,16 @@ def normalize_source_type(source_type: str | None) -> str | None:
 
 def validate_platform(platform: str) -> None:
     if platform not in SUPPORTED_PLATFORMS:
-        raise ValueError(f"unsupported platform: {platform}")
+        raise ValueError(f"不支持的平台 '{platform}'，{_MVP_PLATFORM_ERROR_MSG}")
 
 
 def validate_platform_for_collector_type(platform: str, collector_type: str) -> None:
+    if collector_type == "mock":
+        return
     if collector_type == "media_crawler":
         if platform not in MEDIA_CRAWLER_PLATFORMS:
             raise ValueError(
-                f"collector_type=media_crawler 不支持平台 '{platform}'，"
-                f"仅支持：{', '.join(sorted(MEDIA_CRAWLER_PLATFORMS))}"
+                f"collector_type=media_crawler 不支持平台 '{platform}'，{_MVP_PLATFORM_ERROR_MSG}"
             )
 
 

@@ -16,6 +16,7 @@ class LeadOut(BaseModel):
     source_post_title: str | None = None
     source_post_url: str | None = None
     user_name: str | None = None
+    user_profile_url: str | None = None
     content: str | None = None
     lead_level: str
     lead_score: float
@@ -26,5 +27,11 @@ class LeadOut(BaseModel):
     follow_up_script: str | None = None
     status: str
     notes: str | None = None
+    crm_customer_id: int | None = None
+    crm_opportunity_id: int | None = None
+    converted_to_crm_at: datetime | None = None
+    is_duplicate: bool = False
+    duplicate_group_id: str | None = None
+    duplicate_reason: str | None = None
     created_at: datetime
     updated_at: datetime

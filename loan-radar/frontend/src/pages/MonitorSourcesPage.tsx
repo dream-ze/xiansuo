@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import {
   createMonitorSource,
@@ -9,6 +8,7 @@ import {
   toggleMonitorSource,
   crawlMonitorSource,
   updateMonitorSource,
+  generateDemoData,
   type CollectorCapability,
   type CrawlTask,
   type MonitorSource,
@@ -30,13 +30,14 @@ const SOURCE_TYPE_OPTIONS = [
 
 const COLLECTOR_TYPE_OPTIONS = [
   { label: "media_crawler：多平台采集（小红书/抖音/知乎）", value: "media_crawler" },
+  { label: "mock：演示采集模式（无需 MediaCrawler）", value: "mock" },
 ];
 
 export const SOURCE_ALLOWED_COLLECTOR_TYPES: Record<string, string[]> = {
-  keyword: ["media_crawler"],
-  competitor_account: ["media_crawler"],
-  manual_post: ["media_crawler"],
-  hot_post_rule: ["media_crawler"],
+  keyword: ["media_crawler", "mock"],
+  competitor_account: ["media_crawler", "mock"],
+  manual_post: ["media_crawler", "mock"],
+  hot_post_rule: ["media_crawler", "mock"],
 };
 
 export function getAllowedCollectorTypesBySourceType(sourceType: string): string[] {
@@ -162,7 +163,6 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
 }
 
 export default function MonitorSourcesPage() {
-  const navigate = useNavigate();
   const [items, setItems] = useState<MonitorSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +176,9 @@ export default function MonitorSourcesPage() {
   const [collectorCapabilities, setCollectorCapabilities] = useState<Record<string, CollectorCapability>>({});
   const [capabilityLoading, setCapabilityLoading] = useState(true);
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const [mockAvailable, setMockAvailable] = useState(false);
 
   const allowedCollectorTypes = useMemo(() => {
     return getAllowedCollectorTypesBySourceType(createForm.source_type);
@@ -206,9 +209,11 @@ export default function MonitorSourcesPage() {
     try {
       const result = await getCollectorsCapabilities();
       setCollectorCapabilities(result.collectors || {});
+      setMockAvailable("mock" in (result.collectors || {}));
     } catch {
       setCapabilityError("采集器能力加载失败");
       setCollectorCapabilities({});
+      setMockAvailable(false);
     } finally {
       setCapabilityLoading(false);
     }
@@ -351,6 +356,23 @@ export default function MonitorSourcesPage() {
     }
   }
 
+  async function handleGenerateDemo() {
+    setDemoLoading(true);
+    setDemoError(null);
+    setActionMessage(null);
+
+    try {
+      const result = await generateDemoData();
+      await refreshList();
+      const sourceNames = result.demo_sources.map((s) => s.name).join("、");
+      setActionMessage(`演示数据生成中：${sourceNames}。请稍后查看帖子池、评论池、线索池和日报。`);
+    } catch (demoErr) {
+      setDemoError(demoErr instanceof Error ? demoErr.message : "生成演示数据失败");
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
   return (
     <main className="page-shell">
       <header className="page-header">
@@ -408,7 +430,37 @@ export default function MonitorSourcesPage() {
           · <strong>内嵌模式</strong>：设置环境变量 <code>MEDIA_CRAWLER_HOME</code> 指向 MediaCrawler 目录，无需单独启动服务<br/>
           · <strong>HTTP 模式</strong>：启动 MediaCrawler API 服务（默认 http://127.0.0.1:8080）<br/>
           可通过 <code>/api/monitor-sources/media-crawler/health</code> 检查当前模式和服务状态。</p>
+          {mockAvailable && (
+            <p style={{ marginTop: "8px" }}>
+              🎭 <strong>演示模式已启用</strong>（ENABLE_MOCK_COLLECTOR=true）：可选择 mock 采集器，或点击下方按钮一键生成演示数据。
+            </p>
+          )}
         </div>
+        {mockAvailable && (
+          <div style={{ marginBottom: "12px" }}>
+            <button
+              type="button"
+              onClick={() => void handleGenerateDemo()}
+              disabled={demoLoading}
+              style={{
+                padding: "10px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: demoLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              {demoLoading ? "生成中..." : "🎭 一键生成演示数据"}
+            </button>
+            {demoError && <p className="inline-error" style={{ marginTop: "8px" }}>{demoError}</p>}
+            <small className="field-hint" style={{ display: "block", marginTop: "4px" }}>
+              自动创建演示监控源并触发采集，生成帖子、评论、线索、日报等完整链路数据。所有演示数据标记 demo=true。
+            </small>
+          </div>
+        )}
         <form className="form-grid" onSubmit={handleCreate}>
           <label>
             <span>source_type</span>

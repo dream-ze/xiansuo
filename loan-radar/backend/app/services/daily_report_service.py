@@ -52,8 +52,11 @@ _FOLLOW_UP_TEMPLATES = {
 }
 
 _RISK_WARNINGS = [
-    "请勿在公开评论中直接承诺贷款成功率或利率范围，避免合规风险。",
-    "私信跟进时请勿索取用户身份证、银行卡等敏感信息，应引导至正规渠道申请。",
+    "跟进时请勿承诺下款，避免引发合规风险和客户投诉。",
+    "请勿夸大利率优势或隐瞒实际费率，确保信息真实透明。",
+    "请勿诱导用户增加负债，应基于实际需求推荐合理方案。",
+    "建议使用「咨询」「评估」「方案匹配」类话术，避免「包下款」「零门槛」等违规表述。",
+    "私信跟进时请勿索取身份证、银行卡等敏感信息，应引导至正规渠道申请。",
     "已识别为广告/同行的评论请勿跟进，避免浪费资源。",
     "请确保所有贷款产品宣传内容符合当地金融监管要求。",
 ]
@@ -173,7 +176,7 @@ def generate_daily_report(db: Session, platform: str | None = None) -> DailyRepo
     a_lead_details = _build_a_lead_details(leads)
     typical_evidence = _build_typical_evidence(leads)
     discovered_competitors = _build_discovered_competitors(db, platform)
-    tomorrow_suggestions = _build_tomorrow_suggestions(a_count, b_count, lead_count, top_demands)
+    tomorrow_suggestions = _build_tomorrow_suggestions(a_count, b_count, lead_count, top_demands, top_keywords)
 
     # 已有同日同平台报告则更新，否则新建
     existing = (
@@ -267,36 +270,64 @@ def _build_discovered_competitors(db: Session, platform: str | None) -> list[dic
             "competitor_score": c.competitor_score,
             "status": c.status,
             "discover_reason": c.discover_reason or "",
+            "suggest_monitor": c.competitor_score >= 60,
         }
         for c in competitors
     ]
 
 
 def _build_tomorrow_suggestions(
-    a_count: int, b_count: int, lead_count: int, top_demands: list[dict]
-) -> list[str]:
-    suggestions = []
+    a_count: int, b_count: int, lead_count: int, top_demands: list[dict], top_keywords: list[dict]
+) -> dict:
+    recommended_keywords = []
+    for item in top_keywords[:5]:
+        kw = item.get("keyword", "")
+        if kw:
+            recommended_keywords.append(kw)
 
+    if not recommended_keywords:
+        recommended_keywords = ["征信花", "急用钱", "负债高", "网贷太多", "公积金贷款"]
+
+    competitor_directions = []
+    demand_names = [d.get("demand_type", "") for d in top_demands[:3]]
+    if "借款需求" in demand_names:
+        competitor_directions.append("关注发布借款攻略类内容的同行账号")
+    if "资质焦虑" in demand_names:
+        competitor_directions.append("关注发布征信修复/提额类内容的同行账号")
+    if "产品咨询" in demand_names:
+        competitor_directions.append("关注做贷款产品对比的同行账号")
+    if not competitor_directions:
+        competitor_directions.append("关注活跃发布贷款相关内容的同行账号")
+
+    content_topics = []
+    for dt in demand_names:
+        if dt == "借款需求":
+            content_topics.append("「急用钱怎么借？3分钟看懂申请条件」")
+        elif dt == "资质焦虑":
+            content_topics.append("「征信花了还能贷款吗？真实案例分享」")
+        elif dt == "产品咨询":
+            content_topics.append("「信用贷 vs 抵押贷，哪种更适合你？」")
+        elif dt == "弱意向":
+            content_topics.append("「一分钟测额度，看看你能贷多少」")
+    if not content_topics:
+        content_topics.append("「贷款申请全攻略：从准备到下款」")
+
+    follow_up_hints = []
     if a_count >= 3:
-        suggestions.append("A级线索充足，建议明天优先跟进A级客户，争取当天完成首次沟通和方案推荐。")
+        follow_up_hints.append("A级线索充足，建议明天优先跟进A级客户，争取当天完成首次沟通和方案推荐。")
     elif a_count > 0:
-        suggestions.append("有A级线索待跟进，建议明天上午完成A级线索的首次联系。")
-
+        follow_up_hints.append("有A级线索待跟进，建议明天上午完成A级线索的首次联系。")
     if b_count >= 5:
-        suggestions.append("B级线索较多，建议通过产品介绍和测额工具筛选高意向客户。")
-
+        follow_up_hints.append("B级线索较多，建议通过产品介绍和测额工具筛选高意向客户。")
     if lead_count == 0:
-        suggestions.append("今日无线索，建议检查监控关键词是否精准，或增加新的监控源扩大覆盖。")
+        follow_up_hints.append("今日无线索，建议检查监控关键词是否精准，或增加新的监控源扩大覆盖。")
 
-    for item in top_demands[:2]:
-        dt = item.get("demand_type", "")
-        if dt:
-            suggestions.append(f"关注「{dt}」类需求，建议明天发布相关内容吸引潜在客户。")
-
-    if not suggestions:
-        suggestions.append("保持当前监控策略，持续优化关键词和采集频率。")
-
-    return suggestions
+    return {
+        "recommended_keywords": recommended_keywords,
+        "competitor_directions": competitor_directions,
+        "content_topics": content_topics,
+        "follow_up_hints": follow_up_hints if follow_up_hints else ["保持当前监控策略，持续优化关键词和采集频率。"],
+    }
 
 
 def get_today_report(db: Session, platform: str | None = None) -> DailyReport | None:

@@ -66,6 +66,7 @@ export type CrawlTask = {
   retry_count?: number;
   max_retries?: number;
   last_error_type?: string | null;
+  failure_type?: string | null;
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
@@ -106,6 +107,7 @@ export type Lead = {
   source_post_title: string | null;
   source_post_url: string | null;
   user_name: string | null;
+  user_profile_url: string | null;
   content: string | null;
   lead_level: string;
   lead_score: number;
@@ -116,8 +118,164 @@ export type Lead = {
   follow_up_script: string | null;
   status: string;
   notes: string | null;
+  crm_customer_id: number | null;
+  crm_opportunity_id: number | null;
+  converted_to_crm_at: string | null;
+  is_duplicate: boolean;
+  duplicate_group_id: string | null;
+  duplicate_reason: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type CrmCustomer = {
+  id: number;
+  name: string;
+  phone: string | null;
+  contact_info: string | null;
+  owner_name: string | null;
+  source_lead_id: number | null;
+  source_platform: string | null;
+  source_type: string | null;
+  source_post_id: number | null;
+  source_comment_id: number | null;
+  source_summary: string | null;
+  demand_amount: number | null;
+  loan_purpose: string | null;
+  qualification_summary: string | null;
+  risk_level: string | null;
+  customer_level: string | null;
+  status: string;
+  evidence: unknown;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmOpportunity = {
+  id: number;
+  customer_id: number;
+  source_lead_id: number | null;
+  name: string;
+  customer_name: string | null;
+  owner_name: string | null;
+  stage: string;
+  estimated_amount: number | null;
+  expected_close_date: string | null;
+  probability: number;
+  loss_reason: string | null;
+  next_step: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmTask = {
+  id: number;
+  customer_id: number | null;
+  opportunity_id: number | null;
+  contract_id: number | null;
+  customer_name: string | null;
+  opportunity_name: string | null;
+  title: string;
+  task_type: string;
+  owner_name: string | null;
+  due_at: string | null;
+  status: string;
+  priority: string;
+  suggestion: string | null;
+  is_overdue: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmFollowUp = {
+  id: number;
+  customer_id: number;
+  opportunity_id: number | null;
+  contract_id: number | null;
+  customer_name: string | null;
+  opportunity_name: string | null;
+  owner_name: string | null;
+  follow_up_type: string;
+  content: string;
+  customer_feedback: string | null;
+  next_action: string | null;
+  next_follow_up_at: string | null;
+  stage_before: string | null;
+  stage_after: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmContract = {
+  id: number;
+  customer_id: number;
+  opportunity_id: number | null;
+  product_id: number | null;
+  customer_name: string | null;
+  contract_no: string | null;
+  title: string;
+  owner_name: string | null;
+  amount: number;
+  signed_at: string | null;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmReceivablePlan = {
+  id: number;
+  customer_id: number;
+  contract_id: number;
+  customer_name: string | null;
+  contract_title: string | null;
+  owner_name: string | null;
+  amount: number;
+  due_date: string;
+  status: string;
+  received_amount: number;
+  notes: string | null;
+  is_overdue: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmListResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type CrmDashboard = {
+  total_leads: number;
+  converted_leads: number;
+  conversion_rate: number;
+  customer_count: number;
+  opportunity_count: number;
+  won_count: number;
+  lost_count: number;
+  win_rate: number;
+  pending_task_count: number;
+  overdue_task_count: number;
+  upcoming_receivable_count: number;
+  overdue_receivable_count: number;
+  stage_counts: Record<string, number>;
+  source_counts: Record<string, number>;
+};
+
+export type LeadConvertToCrmPayload = {
+  owner_name?: string | null;
+  next_follow_up_at?: string | null;
+};
+
+export type LeadConvertToCrmResult = {
+  customer: CrmCustomer;
+  opportunity: CrmOpportunity;
+  task: CrmTask;
 };
 
 export type LeadListResponse = {
@@ -137,8 +295,51 @@ export type LeadQueryParams = {
   keyword?: string;
   source_post_id?: number;
   source_comment_id?: number;
+  is_duplicate?: boolean | string;
+  converted_to_crm?: boolean | string;
   page?: number;
   page_size?: number;
+};
+
+export type CrmCustomerPayload = {
+  name: string;
+  phone?: string | null;
+  contact_info?: string | null;
+  owner_name?: string | null;
+  demand_amount?: number | null;
+  loan_purpose?: string | null;
+  qualification_summary?: string | null;
+  risk_level?: string | null;
+  customer_level?: string | null;
+  status?: string;
+  notes?: string | null;
+};
+
+export type CrmFollowUpPayload = {
+  customer_id: number;
+  opportunity_id?: number | null;
+  contract_id?: number | null;
+  owner_name?: string | null;
+  follow_up_type?: string;
+  content: string;
+  customer_feedback?: string | null;
+  next_action?: string | null;
+  next_follow_up_at?: string | null;
+  stage_before?: string | null;
+  stage_after?: string | null;
+};
+
+export type CrmTaskPayload = {
+  customer_id?: number | null;
+  opportunity_id?: number | null;
+  contract_id?: number | null;
+  title: string;
+  task_type?: string;
+  owner_name?: string | null;
+  due_at?: string | null;
+  status?: string;
+  priority?: string;
+  suggestion?: string | null;
 };
 
 export type LeadStatusUpdatePayload = {
@@ -431,6 +632,19 @@ export function rerunCrawlTask(id: number) {
   });
 }
 
+export type FailureTypeMeta = {
+  value: string;
+  label: string;
+  description: string;
+  suggestion: string;
+};
+
+export type FailureTypesMetaResponse = Record<string, FailureTypeMeta>;
+
+export function getFailureTypesMeta() {
+  return requestJson<FailureTypesMetaResponse>("/api/crawl-tasks/failure-types/meta");
+}
+
 export function getLeads(params: LeadQueryParams = {}) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -502,6 +716,113 @@ export function updateLeadStatus(id: number, status: string, notes?: string | nu
   });
 }
 
+export function convertLeadToCrm(id: number, payload: LeadConvertToCrmPayload = {}) {
+  return requestJson<LeadConvertToCrmResult>(`/api/leads/${id}/convert-to-crm`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getCrmDashboard() {
+  return requestJson<CrmDashboard>("/api/crm/dashboard");
+}
+
+export function getCrmCustomers(params: { owner_name?: string; status?: string; keyword?: string; page?: number; page_size?: number } = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrmListResponse<CrmCustomer>>(`/api/crm/customers${queryString ? `?${queryString}` : ""}`);
+}
+
+export function createCrmCustomer(payload: CrmCustomerPayload) {
+  return requestJson<CrmCustomer>("/api/crm/customers", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateCrmCustomer(id: number, payload: Partial<CrmCustomerPayload>) {
+  return requestJson<CrmCustomer>(`/api/crm/customers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getCrmOpportunities(params: { owner_name?: string; stage?: string; customer_id?: number; page?: number; page_size?: number } = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrmListResponse<CrmOpportunity>>(`/api/crm/opportunities${queryString ? `?${queryString}` : ""}`);
+}
+
+export function updateCrmOpportunity(id: number, payload: Partial<CrmOpportunity>) {
+  return requestJson<CrmOpportunity>(`/api/crm/opportunities/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getCrmFollowUps(params: { customer_id?: number; opportunity_id?: number; page?: number; page_size?: number } = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrmListResponse<CrmFollowUp>>(`/api/crm/follow-ups${queryString ? `?${queryString}` : ""}`);
+}
+
+export function createCrmFollowUp(payload: CrmFollowUpPayload) {
+  return requestJson<CrmFollowUp>("/api/crm/follow-ups", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getCrmTasks(params: { owner_name?: string; status?: string; customer_id?: number; page?: number; page_size?: number } = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrmListResponse<CrmTask>>(`/api/crm/tasks${queryString ? `?${queryString}` : ""}`);
+}
+
+export function createCrmTask(payload: CrmTaskPayload) {
+  return requestJson<CrmTask>("/api/crm/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateCrmTask(id: number, payload: Partial<CrmTask>) {
+  return requestJson<CrmTask>(`/api/crm/tasks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getCrmContracts(params: { customer_id?: number; status?: string } = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrmContract[]>(`/api/crm/contracts${queryString ? `?${queryString}` : ""}`);
+}
+
+export function getCrmReceivablePlans(params: { customer_id?: number; status?: string } = {}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  return requestJson<CrmReceivablePlan[]>(`/api/crm/receivable-plans${queryString ? `?${queryString}` : ""}`);
+}
+
 export async function exportLeadsCsv(params: LeadQueryParams = {}) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -533,11 +854,78 @@ export function listDailyReports(platform?: string) {
   return requestJson<DailyReport[]>(`/api/daily-reports${query}`);
 }
 
+export async function exportDailyReport(format: string = "markdown", platform?: string) {
+  const params = new URLSearchParams();
+  params.set("format", format);
+  if (platform) params.set("platform", platform);
+  const response = await fetch(`${API_BASE_URL}/api/daily-reports/today/export?${params.toString()}`);
+  if (!response.ok) {
+    let message = `导出失败: ${response.status}`;
+    try {
+      const body = await response.json();
+      if (body.message) message = body.message;
+    } catch {}
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
 export type QueueStatus = {
   active_task_id: number | null;
   queue_size: number;
   queue_items: number[];
 };
+
+export type DashboardStats = {
+  source_count: number;
+  task_count: number;
+  post_count: number;
+  comment_count: number;
+  lead_count: number;
+  a_lead_count: number;
+  pending_competitor_count: number;
+  recent_a_leads: Array<{
+    id: number;
+    platform: string;
+    user_name: string;
+    content: string;
+    lead_score: number;
+    demand_type: string;
+    follow_up_script: string;
+    created_at: string;
+  }>;
+  recent_tasks: Array<{
+    id: number;
+    source_type: string;
+    source_value: string;
+    platform: string;
+    status: string;
+    post_count: number;
+    comment_count: number;
+    lead_count: number;
+    error_message: string;
+    started_at: string | null;
+    finished_at: string | null;
+    created_at: string;
+  }>;
+};
+
+export type MediaCrawlerHealth = {
+  status: string;
+  mode: string;
+  api_base_url?: string;
+  media_crawler_home?: string;
+  shared_db: { available: boolean; path?: string };
+  supported_platforms: Array<{ value: string; label: string }>;
+};
+
+export function getDashboardStats() {
+  return requestJson<DashboardStats>("/api/dashboard/stats");
+}
+
+export function getMediaCrawlerHealth() {
+  return requestJson<MediaCrawlerHealth>("/api/dashboard/media-crawler-health");
+}
 
 export function getQueueStatus() {
   return requestJson<QueueStatus>("/api/collection/tasks/queue/status");
@@ -596,6 +984,28 @@ export function testScoring(text: string) {
 
 export function reloadScoringRules() {
   return requestJson<{ version: string; message: string }>("/api/scoring-rules/reload", {
+    method: "POST",
+  });
+}
+
+export type DemoGenerateResult = {
+  message: string;
+  demo_sources: Array<{
+    id: number;
+    name: string;
+    source_type: string;
+    platform: string;
+  }>;
+  crawl_tasks: Array<{
+    task_id: number;
+    source_id: number;
+    queue_position: number;
+  }>;
+  tip: string;
+};
+
+export function generateDemoData() {
+  return requestJson<DemoGenerateResult>("/api/monitor-sources/demo/generate", {
     method: "POST",
   });
 }

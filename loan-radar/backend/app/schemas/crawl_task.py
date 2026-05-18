@@ -17,6 +17,7 @@ class CrawlTaskOut(BaseModel):
     retry_count: int = 0
     max_retries: int = 3
     last_error_type: str | None = None
+    failure_type: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error_message: str | None = None

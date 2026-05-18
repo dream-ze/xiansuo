@@ -1,5 +1,6 @@
 from typing import Annotated
 
+import os
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -240,3 +241,105 @@ def delete_monitor_source_endpoint(
 def get_scheduler_status_endpoint():
     from app.services.crawl_scheduler import get_scheduler_status
     return success_response(get_scheduler_status())
+
+
+@router.post("/demo/seed")
+def seed_demo_data_endpoint(db: Session = Depends(get_db)):
+    """一键初始化完整演示数据 - 仅在开发环境可用
+
+    直接写入数据库生成完整演示数据：监控源、帖子、评论、线索、同行账号、日报。
+    支持重复运行（先清理旧 demo 数据）。
+    生产环境（APP_ENV=production）默认关闭。
+    """
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    if app_env == "production":
+        return JSONResponse(
+            status_code=403,
+            content=error_response("生产环境禁止使用演示数据初始化接口"),
+        )
+
+    from app.services.demo_seed_service import seed_demo_data
+    stats = seed_demo_data(db)
+    return success_response({
+        "message": "演示数据初始化完成",
+        "stats": stats,
+        "tip": "所有演示数据均标记 raw_data.demo=true，可与真实数据区分",
+    })
+
+
+@router.post("/demo/generate")
+def generate_demo_data_endpoint(db: Session = Depends(get_db)):
+    """一键生成演示数据 - 仅在 ENABLE_MOCK_COLLECTOR=true 时可用
+
+    创建演示监控源并立即触发采集任务，生成完整的演示链路数据：
+    帖子、评论、A/B/C/D 线索、疑似同行账号、可用于日报的数据。
+    """
+    mock_enabled = os.getenv("ENABLE_MOCK_COLLECTOR", "false").strip().lower() in ("true", "1", "yes")
+    if not mock_enabled:
+        return JSONResponse(
+            status_code=403,
+            content=error_response("演示模式未启用，请设置 ENABLE_MOCK_COLLECTOR=true"),
+        )
+
+    from app.schemas.monitor_source import MonitorSourceCreate
+    from app.models.monitor_source import MonitorSource
+
+    demo_sources_config = [
+        {
+            "source_type": "keyword",
+            "platform": "xhs",
+            "name": "演示 - 征信花了",
+            "value": "征信花了",
+            "config": {"collector_type": "mock"},
+        },
+        {
+            "source_type": "keyword",
+            "platform": "douyin",
+            "name": "演示 - 急用5万周转",
+            "value": "急用5万周转",
+            "config": {"collector_type": "mock"},
+        },
+        {
+            "source_type": "keyword",
+            "platform": "zhihu",
+            "name": "演示 - 负债高能不能做",
+            "value": "负债高能不能做",
+            "config": {"collector_type": "mock"},
+        },
+        {
+            "source_type": "hot_post_rule",
+            "platform": "xhs",
+            "name": "演示 - 爆款规则",
+            "value": "有逾期怎么处理",
+            "config": {"collector_type": "mock"},
+        },
+    ]
+
+    created_sources = []
+    crawl_tasks = []
+
+    for source_config in demo_sources_config:
+        payload = MonitorSourceCreate(**source_config)
+        monitor_source = create_monitor_source(db, payload)
+        created_sources.append({
+            "id": monitor_source.id,
+            "name": monitor_source.name,
+            "source_type": monitor_source.source_type,
+            "platform": monitor_source.platform,
+        })
+
+        crawl_task = create_queued_crawl_task(db, monitor_source)
+        queue = CrawlTaskQueue.get_instance()
+        position = queue.enqueue(crawl_task.id)
+        crawl_tasks.append({
+            "task_id": crawl_task.id,
+            "source_id": monitor_source.id,
+            "queue_position": position,
+        })
+
+    return success_response({
+        "message": "演示数据生成中，请稍后查看帖子池、评论池、线索池和日报",
+        "demo_sources": created_sources,
+        "crawl_tasks": crawl_tasks,
+        "tip": "所有演示数据均标记 raw_data.demo=true，可与真实数据区分",
+    })

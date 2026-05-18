@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { getComments, type Comment, type CommentQueryParams } from "../api/client";
 
-const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
+const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu"];
 const DEMAND_OPTIONS = ["", "借款需求", "资质焦虑", "产品咨询", "弱意向"];
 const RISK_OPTIONS = ["", "low", "mid", "high"];
 const SUSPECTED_OPTIONS = ["", "true", "false"];

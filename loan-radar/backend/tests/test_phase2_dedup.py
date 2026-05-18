@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.services.crawl_pipeline_service import (
     _sanitize_error_message,
-    _post_already_exists,
-    _comment_already_exists,
     run_monitor_source_crawl,
+)
+from app.services.dedup_service import (
+    batch_dedup_posts,
+    batch_dedup_comments,
 )
 from app.models.post import Post
 from app.models.comment import Comment
@@ -88,7 +90,6 @@ class TestPostDeduplication:
 
     def test_post_already_exists(self, db):
         """应能检测已存在的 post"""
-        # 创建一个 post
         post = Post(
             platform="xhs",
             source_id=1,
@@ -98,14 +99,20 @@ class TestPostDeduplication:
         db.add(post)
         db.commit()
 
-        # 检查是否存在
-        exists = _post_already_exists(db, "xhs", "post123")
-        assert exists is True
+        from app.collectors.base import CollectedPost
+        collected = [CollectedPost(platform="xhs", post_id="post123")]
+        new_posts, updated_posts, dup_post_ids, _, _ = batch_dedup_posts(db, "xhs", collected)
+        assert len(new_posts) == 0
+        assert len(updated_posts) == 1
+        assert "post123" in dup_post_ids
 
     def test_post_not_exists(self, db):
         """应能检测不存在的 post"""
-        exists = _post_already_exists(db, "xhs", "nonexistent")
-        assert exists is False
+        from app.collectors.base import CollectedPost
+        collected = [CollectedPost(platform="xhs", post_id="nonexistent")]
+        new_posts, _, _, dup_count, _ = batch_dedup_posts(db, "xhs", collected)
+        assert len(new_posts) == 1
+        assert dup_count == 0
 
     def test_post_different_platform_not_exists(self, db):
         """不同平台的 post 应视为不同记录"""
@@ -118,9 +125,11 @@ class TestPostDeduplication:
         db.add(post)
         db.commit()
 
-        # 在 douyin 平台上相同 post_id 应被视为不存在
-        exists = _post_already_exists(db, "douyin", "post123")
-        assert exists is False
+        from app.collectors.base import CollectedPost
+        collected = [CollectedPost(platform="douyin", post_id="post123")]
+        new_posts, _, _, dup_count, _ = batch_dedup_posts(db, "douyin", collected)
+        assert len(new_posts) == 1
+        assert dup_count == 0
 
     def test_post_same_id_different_platform_both_exist(self, db):
         """同一 post_id 在不同平台可以都存在"""
@@ -140,9 +149,17 @@ class TestPostDeduplication:
         db.add(post2)
         db.commit()
 
-        # 检查两个平台上都存在
-        assert _post_already_exists(db, "xhs", "post123") is True
-        assert _post_already_exists(db, "douyin", "post123") is True
+        from app.collectors.base import CollectedPost
+        xhs_collected = [CollectedPost(platform="xhs", post_id="post123")]
+        douyin_collected = [CollectedPost(platform="douyin", post_id="post123")]
+        new_xhs, updated_xhs, dup_xhs_ids, _, _ = batch_dedup_posts(db, "xhs", xhs_collected)
+        new_douyin, updated_douyin, dup_douyin_ids, _, _ = batch_dedup_posts(db, "douyin", douyin_collected)
+        assert len(new_xhs) == 0
+        assert len(updated_xhs) == 1
+        assert "post123" in dup_xhs_ids
+        assert len(new_douyin) == 0
+        assert len(updated_douyin) == 1
+        assert "post123" in dup_douyin_ids
 
 
 class TestCommentDeduplication:
@@ -158,13 +175,19 @@ class TestCommentDeduplication:
         db.add(comment)
         db.commit()
 
-        exists = _comment_already_exists(db, "xhs", "comment456")
-        assert exists is True
+        from app.collectors.base import CollectedComment
+        collected = [CollectedComment(platform="xhs", post_id="post123", comment_id="comment456")]
+        new_comments, dup_count = batch_dedup_comments(db, "xhs", collected, set())
+        assert len(new_comments) == 0
+        assert dup_count >= 1
 
     def test_comment_not_exists(self, db):
         """应能检测不存在的 comment"""
-        exists = _comment_already_exists(db, "xhs", "nonexistent")
-        assert exists is False
+        from app.collectors.base import CollectedComment
+        collected = [CollectedComment(platform="xhs", post_id="post123", comment_id="nonexistent")]
+        new_comments, dup_count = batch_dedup_comments(db, "xhs", collected, set())
+        assert len(new_comments) == 1
+        assert dup_count == 0
 
     def test_comment_different_platform_not_exists(self, db):
         """不同平台的 comment 应视为不同记录"""
@@ -176,8 +199,11 @@ class TestCommentDeduplication:
         db.add(comment)
         db.commit()
 
-        exists = _comment_already_exists(db, "douyin", "comment456")
-        assert exists is False
+        from app.collectors.base import CollectedComment
+        collected = [CollectedComment(platform="douyin", post_id="post123", comment_id="comment456")]
+        new_comments, dup_count = batch_dedup_comments(db, "douyin", collected, set())
+        assert len(new_comments) == 1
+        assert dup_count == 0
 
     def test_comment_same_id_different_platform_both_exist(self, db):
         """同一 comment_id 在不同平台可以都存在"""
@@ -195,8 +221,15 @@ class TestCommentDeduplication:
         db.add(comment2)
         db.commit()
 
-        assert _comment_already_exists(db, "xhs", "comment456") is True
-        assert _comment_already_exists(db, "douyin", "comment456") is True
+        from app.collectors.base import CollectedComment
+        xhs_collected = [CollectedComment(platform="xhs", post_id="post123", comment_id="comment456")]
+        douyin_collected = [CollectedComment(platform="douyin", post_id="post789", comment_id="comment456")]
+        new_xhs, dup_xhs = batch_dedup_comments(db, "xhs", xhs_collected, set())
+        new_douyin, dup_douyin = batch_dedup_comments(db, "douyin", douyin_collected, set())
+        assert len(new_xhs) == 0
+        assert dup_xhs >= 1
+        assert len(new_douyin) == 0
+        assert dup_douyin >= 1
 
 
 class TestLastCrawledAtUpdate:

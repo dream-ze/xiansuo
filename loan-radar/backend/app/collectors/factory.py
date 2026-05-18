@@ -18,8 +18,16 @@ def _is_embedded_mode() -> bool:
     return p.is_dir()
 
 
+def _is_mock_enabled() -> bool:
+    return os.getenv("ENABLE_MOCK_COLLECTOR", "false").strip().lower() in ("true", "1", "yes")
+
+
 class CollectorFactory:
     """采集器工厂 - 根据 collector_type 严格路由
+
+    支持两种采集器类型：
+    - media_crawler：真实采集模式（基于 MediaCrawler）
+    - mock：演示采集模式（仅在 ENABLE_MOCK_COLLECTOR=true 时可用）
 
     当设置了 MEDIA_CRAWLER_HOME 环境变量时，优先使用 EmbeddedMediaCrawlerCollector
     （直接调用 MediaCrawler Python API，无需单独启动 HTTP 服务）。
@@ -33,6 +41,12 @@ class CollectorFactory:
         is_valid, msg = config_obj.validate_collector_type()
         if not is_valid:
             raise ValueError(msg)
+
+        if config_obj.collector_type == "mock":
+            if not _is_mock_enabled():
+                raise ValueError("mock collector is disabled (set ENABLE_MOCK_COLLECTOR=true to enable)")
+            from app.collectors.mock_collector import MockCollector
+            return MockCollector()
 
         if config_obj.collector_type == "media_crawler":
             if _is_embedded_mode():
@@ -51,7 +65,7 @@ class CollectorFactory:
     def get_supported_collectors() -> dict[str, dict[str, Any]]:
         mc_platforms = sorted(MC_PLATFORMS)
         mode = "embedded" if _is_embedded_mode() else "http_bridge"
-        return {
+        result = {
             "media_crawler": {
                 "name": "MediaCrawler 多平台采集器",
                 "description": (
@@ -71,3 +85,23 @@ class CollectorFactory:
                 },
             },
         }
+
+        if _is_mock_enabled():
+            result["mock"] = {
+                "name": "演示采集器（Mock）",
+                "description": (
+                    "生成贴近助贷场景的模拟数据，用于演示和测试。"
+                    "无需启动 MediaCrawler 服务即可跑通完整链路。"
+                    "所有数据标记 demo=true，不会与真实数据混淆。"
+                ),
+                "status": "ready",
+                "mode": "demo",
+                "supports": ["keyword", "competitor_account", "manual_post", "hot_post_rule"],
+                "config": {
+                    "collector_type": "mock",
+                    "max_posts": 10,
+                    "max_comments_per_post": 30,
+                },
+            }
+
+        return result

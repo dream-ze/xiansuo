@@ -69,7 +69,11 @@ class CollectorConfig(BaseModel):
 
     def validate_collector_type(self) -> tuple[bool, str]:
         """校验采集器类型是否支持"""
-        supported_types = {"media_crawler"}
+        supported_types = {"media_crawler", "mock"}
+        if self.collector_type == "mock":
+            from app.collectors.mock_collector import _is_mock_enabled
+            if not _is_mock_enabled():
+                return False, "mock collector is disabled (set ENABLE_MOCK_COLLECTOR=true to enable)"
         if self.collector_type not in supported_types:
             return False, f"Unsupported collector_type: {self.collector_type}"
         return True, ""

@@ -20,7 +20,8 @@ from app.services.crawl_task_service import (
     mark_crawl_task_success,
     update_crawl_task_progress,
 )
-from app.services.dedup_service import batch_dedup_comments, batch_dedup_posts, compute_content_hash
+from app.services.dedup_service import batch_dedup_comments, batch_dedup_posts, check_lead_duplicate, compute_content_hash
+from app.services.failure_classifier import FailureType, classify_failure_type
 from app.services.lead_scoring_service import LeadScoringService
 
 
@@ -32,6 +33,10 @@ def _sanitize_error_message(error: Exception | str) -> str:
     msg = re.sub(r'password["\']?\s*[:=]\s*["\']?[^"\';\s]+', 'password=***', msg, flags=re.IGNORECASE)
     msg = re.sub(r'authorization["\']?\s*[:=]\s*["\']?[^"\';\s]+', 'Authorization=***', msg, flags=re.IGNORECASE)
     msg = re.sub(r'[?&](key|token|auth|api_key|apikey)=[^&\s]+', '&key=***', msg, flags=re.IGNORECASE)
+    msg = re.sub(r'sessionid=[^&;\s]+', 'sessionid=***', msg, flags=re.IGNORECASE)
+    msg = re.sub(r'(mysql|postgres|mongodb|redis)://[^\s"\']+', r'\1://***', msg, flags=re.IGNORECASE)
+    msg = re.sub(r'Traceback \(most recent call last\):.*', '[internal error details omitted]', msg, flags=re.DOTALL)
+    msg = re.sub(r'File "[^"]+", line \d+.*', '[stack trace omitted]', msg, flags=re.IGNORECASE)
     return msg
 
 
@@ -143,6 +148,11 @@ def _save_comments_and_leads(
             if existing_lead is not None:
                 continue
 
+            lead_content_hash = compute_content_hash(collected.content)
+            is_dup, dup_group_id, dup_reason = check_lead_duplicate(
+                db, collected.platform, collected.user_profile_url, collected.content,
+            )
+
             lead = Lead(
                 platform=collected.platform,
                 source_id=source.id,
@@ -150,6 +160,8 @@ def _save_comments_and_leads(
                 source_post_id=post_id_map.get(collected.post_id),
                 source_comment_id=comment.id,
                 user_name=collected.user_name,
+                user_profile_url=collected.user_profile_url,
+                content_hash=lead_content_hash,
                 content=collected.content,
                 lead_level=scoring_result.lead_level,
                 lead_score=scoring_result.lead_score,
@@ -159,6 +171,9 @@ def _save_comments_and_leads(
                 reason=scoring_result.reason,
                 follow_up_script=scoring_result.follow_up_script,
                 status="new",
+                is_duplicate=is_dup,
+                duplicate_group_id=dup_group_id,
+                duplicate_reason=dup_reason,
             )
             db.add(lead)
             lead_count += 1
@@ -231,7 +246,8 @@ def run_monitor_source_crawl(db: Session, source: MonitorSource, crawl_task: Cra
         db.rollback()
         sanitized_error = _sanitize_error_message(error)
         error_message = f"crawl failed for source_id={source.id}, source_type={source.source_type}: {sanitized_error}"
-        return mark_crawl_task_failed(db, crawl_task, error_message)
+        failure_type = classify_failure_type(error)
+        return mark_crawl_task_failed(db, crawl_task, error_message, failure_type=failure_type.value)
 
 
 def _run_monitor_source_with_media_crawler(
@@ -248,6 +264,7 @@ def _run_monitor_source_with_media_crawler(
             crawl_task,
             f"MediaCrawler does not support platform '{source.platform}'. "
             f"Supported: {', '.join(sorted(SUPPORTED_PLATFORMS))}",
+            failure_type=FailureType.PLATFORM_NOT_SUPPORTED.value,
         )
 
     collector = MediaCrawlerCollector()
@@ -303,16 +320,20 @@ def _run_monitor_source_with_media_crawler(
     except (CollectionAuthError, CollectionNoDataError, CollectionRequestError, ValueError, ConnectionError) as error:
         db.rollback()
         sanitized_error = _sanitize_error_message(error)
+        failure_type = classify_failure_type(error)
         return mark_crawl_task_failed(
             db,
             crawl_task,
             f"[MediaCrawler] {sanitized_error}",
+            failure_type=failure_type.value,
         )
     except Exception as error:
         db.rollback()
         sanitized_error = _sanitize_error_message(error)
+        failure_type = classify_failure_type(error)
         return mark_crawl_task_failed(
             db,
             crawl_task,
             f"[MediaCrawler] {sanitized_error}",
+            failure_type=failure_type.value,
         )

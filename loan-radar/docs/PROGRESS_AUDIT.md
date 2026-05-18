@@ -41,14 +41,15 @@
 - Mock 主链路无法通过监控源接口触发
 - smoke_test.py 全链路不可运行
 
-### 1.3 平台支持（⚠️ 存在两层不一致）
+### 1.3 平台支持（✅ 已统一）
 
 | 层级 | 定义位置 | 支持的平台 | 影响 |
 |------|----------|-----------|------|
-| 监控源创建校验 | `monitor_source_service.py` SUPPORTED_PLATFORMS | xhs, douyin, kuaishou, bilibili, weibo, tieba, zhihu, other（8个） | 创建监控源时可通过 |
+| 监控源创建校验 | `monitor_source_service.py` SUPPORTED_PLATFORMS | xhs, douyin, zhihu（3个） | 创建监控源时校验，不支持的平台返回 400 |
+| 采集任务创建校验 | `collection_task_service.py` SUPPORTED_COLLECTION_PLATFORMS | xhs, douyin, zhihu（3个） | 创建采集任务时校验，不支持的平台返回 400 |
 | MediaCrawler 采集 | `media_crawler/mappers.py` SUPPORTED_PLATFORMS | xhs, douyin, zhihu（3个） | 触发采集时校验 |
 
-**严重问题**：用户可以创建 `kuaishou`/`bilibili`/`weibo`/`tieba` 平台的监控源（创建成功），但触发采集时会因为 MediaCrawler 不支持该平台而失败。`other` 平台同样无法被 MediaCrawler 采集。
+**已修复**：创建监控源和采集任务时，不支持的平台（kuaishou/bilibili/weibo/tieba/other）直接返回 400，不再出现"创建成功但采集失败"的问题。
 
 ### 1.4 采集管道
 
@@ -90,7 +91,7 @@
 | 前端监控源页支持 playwright 配置提示 | PRD §本阶段做 #7 | ⚠️ 前端下拉仍有 playwright 选项但后端不支持 |
 | smoke_test 覆盖 keyword + mock 主链路 | README §步骤23 | ❌ smoke_test Step 1-9 依赖 mock 采集，Factory 不支持 |
 | smoke_test 覆盖 manual_post + playwright | README §步骤23 | ❌ smoke_test Step 10-13 依赖 playwright，Factory 不支持 |
-| 支持 kuaishou/bilibili/weibo/tieba 平台采集 | API.md 枚举 | ❌ 监控源可创建但 MediaCrawler 不支持采集 |
+| 支持 kuaishou/bilibili/weibo/tieba 平台采集 | API.md 枚举 | ✅ 已修复：API.md 已更新为仅 xhs/douyin/zhihu，不支持平台返回 400 |
 
 ---
 
@@ -124,7 +125,7 @@
 | MonitorSourcesPage 中 playwright 选项 | 前端下拉有 playwright，但后端 Factory 不支持，选了会报错 | P1 |
 | MonitorSourcesPage 中 external_api / generic_web 选项 | 前端下拉有这些选项，但后端 Factory 不支持 | P2 |
 | MonitorSourcesPage 中 mock 选项 | keyword/competitor_account 默认选 mock，但 Factory 不支持 | P0 |
-| MonitorSourcesPage 平台下拉 | 可选 kuaishou/bilibili/weibo/tieba 但 MediaCrawler 不支持采集 | P1 |
+| MonitorSourcesPage 平台下拉 | ~~可选 kuaishou/bilibili/weibo/tieba~~ | ✅ 已修复：前端仅展示小红书/抖音/知乎 |
 | CrawlTasksPage 创建采集表单 | 调用 `/api/collection/tasks` + `/run`，依赖 MediaCrawler 服务在线 | P2（需文档说明） |
 | HomePage.tsx | 组件存在但未使用，路由指向 DashboardPage | P2（死代码） |
 
@@ -161,7 +162,7 @@
 | # | 问题 | 修复方案 |
 |---|------|----------|
 | P1-1 | PendingCompetitorsPage 未挂载路由，同行审核功能不可达 | 在 `routes/index.tsx` 添加 `/pending-competitors` 路由和导航入口 |
-| P1-2 | 平台枚举两层不一致：monitor_source_service 接受 8 个平台，MediaCrawler 只支持 3 个 | 统一平台校验：创建监控源时即校验平台是否可被当前采集器支持，或在文档中明确区分 |
+| P1-2 | ~~平台枚举两层不一致~~ | ✅ 已修复：统一为 xhs/douyin/zhihu，不支持的平台返回 400 |
 | P1-3 | DB_DESIGN.md 缺失 crawl_tasks 新增字段（source_value/limit_count/collected_posts/collected_comments） | 更新 DB_DESIGN.md |
 | P1-4 | smoke_test 未覆盖 pending competitors 审核 | 新增 Step 14 测试同行审核 |
 | P1-5 | README 中 XHS CDP 相关说明已过时（xhs_collector 等已删除） | 更新或移除相关段落 |

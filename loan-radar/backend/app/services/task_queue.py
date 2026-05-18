@@ -6,6 +6,7 @@ import time
 from typing import Callable
 
 from app.services.retry_service import classify_error, should_retry
+from app.services.failure_classifier import classify_failure_type
 
 logger = logging.getLogger(__name__)
 
@@ -159,10 +160,12 @@ def _execute_crawl_task_with_retry(crawl_task_id: int) -> None:
                 try:
                     crawl_task = db2.query(CrawlTask).filter(CrawlTask.id == crawl_task_id).first()
                     if crawl_task is not None:
+                        failure_type = classify_failure_type(e)
                         mark_crawl_task_failed(
                             db2,
                             crawl_task,
                             f"[{error_category.value}] {str(e)[:500]} (after {retry_count} attempts)",
+                            failure_type=failure_type.value,
                         )
                 finally:
                     db2.close()

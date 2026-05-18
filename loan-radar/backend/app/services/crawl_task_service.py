@@ -94,11 +94,17 @@ def mark_crawl_task_success(
     return crawl_task
 
 
-def mark_crawl_task_failed(db: Session, crawl_task: CrawlTask, error_message: str) -> CrawlTask:
+def mark_crawl_task_failed(
+    db: Session,
+    crawl_task: CrawlTask,
+    error_message: str,
+    failure_type: str | None = None,
+) -> CrawlTask:
     crawl_task.status = "failed"
     crawl_task.progress = "failed"
     crawl_task.finished_at = datetime.now(timezone.utc)
     crawl_task.error_message = error_message
+    crawl_task.failure_type = failure_type
     db.commit()
     db.refresh(crawl_task)
     return crawl_task

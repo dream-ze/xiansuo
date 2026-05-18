@@ -14,9 +14,9 @@
 
 - id
 - source_type：keyword / competitor_account / manual_post / hot_post_rule
-- platform：xhs / douyin / zhihu / kuaishou / bilibili / weibo / tieba / other
+- platform：xhs / douyin / zhihu
 
-  > 注意：monitor_source_service 校验接受以上 8 个平台，但 MediaCrawler 当前仅支持 xhs / douyin / zhihu 三个平台的采集。创建 kuaishou / bilibili / weibo / tieba / other 平台的监控源会成功，但触发采集时会因 MediaCrawler 不支持而失败。
+  > 当前 MVP 仅支持以上 3 个平台，传入其他平台将返回 400。后续版本将逐步开放 kuaishou / bilibili / weibo / tieba。
 - name
 - value
 - config JSON
@@ -66,9 +66,13 @@
 - platform
 - status：pending / running / success / failed
 - limit_count：采集数量限制，默认 20
+- retry_count：已重试次数
+- max_retries：最大重试次数，默认 3
+- last_error_type：最近一次错误分类（retry_service 的 ErrorCategory）
+- failure_type：失败类型分类（failure_classifier 的 FailureType），可选值：media_crawler_unreachable / platform_not_supported / auth_required / captcha_or_risk_control / timeout / empty_result / parser_error / unknown
 - started_at
 - finished_at
-- error_message
+- error_message：脱敏后的错误信息
 - post_count
 - comment_count
 - collected_posts：实际采集到的帖子数
@@ -140,7 +144,7 @@
 - evidence JSON
 - reason
 - follow_up_script
-- status：new / contacted / invalid / converted
+- status：new / contacted / interested / invalid / converted
 - created_at
 - updated_at
 

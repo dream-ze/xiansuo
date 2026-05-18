@@ -10,6 +10,7 @@ from app.services.crawl_task_service import (
     get_crawl_task,
     list_crawl_tasks,
 )
+from app.services.failure_classifier import FAILURE_TYPE_META, FailureType
 from app.services.task_queue import CrawlTaskQueue
 from app.utils.response import error_response, success_response
 
@@ -63,6 +64,19 @@ def list_crawl_tasks_endpoint(
     )
 
 
+@router.get("/failure-types/meta")
+def get_failure_types_meta():
+    return success_response({
+        ft.value: {
+            "value": ft.value,
+            "label": meta["label"],
+            "description": meta["description"],
+            "suggestion": meta["suggestion"],
+        }
+        for ft, meta in FAILURE_TYPE_META.items()
+    })
+
+
 @router.get("/{crawl_task_id}")
 def get_crawl_task_endpoint(
     crawl_task_id: int,
@@ -91,6 +105,7 @@ def rerun_crawl_task_endpoint(
     crawl_task.status = "pending"
     crawl_task.progress = "queued"
     crawl_task.error_message = None
+    crawl_task.failure_type = None
     crawl_task.finished_at = None
     crawl_task.retry_count = 0
     crawl_task.last_error_type = None

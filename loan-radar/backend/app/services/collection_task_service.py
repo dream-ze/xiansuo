@@ -17,11 +17,19 @@ from app.services.crawl_task_service import (
     mark_crawl_task_success,
     update_crawl_task_progress,
 )
+from app.services.failure_classifier import FailureType, classify_failure_type
 
 SUPPORTED_COLLECTION_SOURCE_TYPES = {"keyword", "account", "post_url"}
 
+SUPPORTED_COLLECTION_PLATFORMS = {"xhs", "douyin", "zhihu"}
+
+_MVP_PLATFORM_ERROR_MSG = "当前 MVP 仅支持 xhs/douyin/zhihu，其他平台暂未开放"
+
 
 def create_collection_task(db: Session, payload: CollectionTaskCreate) -> CrawlTask:
+    if payload.platform not in SUPPORTED_COLLECTION_PLATFORMS:
+        raise ValueError(f"不支持的平台 '{payload.platform}'，{_MVP_PLATFORM_ERROR_MSG}")
+
     task = CrawlTask(
         source_id=None,
         source_type=payload.source_type,
@@ -169,17 +177,21 @@ def run_collection_task(db: Session, task: CrawlTask) -> CrawlTask:
         )
     except (CollectionAuthError, CollectionNoDataError, CollectionRequestError, ValueError) as error:
         db.rollback()
+        failure_type = classify_failure_type(error)
         return mark_crawl_task_failed(
             db,
             task,
             f"[MediaCrawler] {_sanitize_error_message(error)}",
+            failure_type=failure_type.value,
         )
     except Exception as error:
         db.rollback()
+        failure_type = classify_failure_type(error)
         return mark_crawl_task_failed(
             db,
             task,
             f"[MediaCrawler] {_sanitize_error_message(error)}",
+            failure_type=failure_type.value,
         )
 
 

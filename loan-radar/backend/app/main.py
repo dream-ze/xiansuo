@@ -8,7 +8,9 @@ from app.api.routes.comments import router as comments_router
 from app.api.routes.collection_tasks import router as collection_tasks_router
 from app.api.routes.content_pools import router as content_pools_router
 from app.api.routes.crawl_tasks import router as crawl_tasks_router
+from app.api.routes.crm import router as crm_router
 from app.api.routes.daily_reports import router as daily_reports_router
+from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.leads import router as leads_router
 from app.api.routes.monitor_sources import router as monitor_sources_router
 from app.api.routes.pending_competitors import router as pending_competitors_router
@@ -47,10 +49,12 @@ app.include_router(posts_router)
 app.include_router(comments_router)
 app.include_router(collection_tasks_router)
 app.include_router(leads_router)
+app.include_router(dashboard_router)
 app.include_router(daily_reports_router)
 app.include_router(pending_competitors_router)
 app.include_router(content_pools_router)
 app.include_router(crawl_tasks_router)
+app.include_router(crm_router)
 app.include_router(monitor_sources_router)
 app.include_router(collectors_router)
 app.include_router(scoring_rules_router)

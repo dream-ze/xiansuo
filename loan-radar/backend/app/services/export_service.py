@@ -8,6 +8,14 @@ from app.models.lead import Lead
 
 VALID_LEAD_STATUSES = {"new", "contacted", "interested", "invalid", "converted"}
 
+LEAD_STATUS_LABELS = {
+    "new": "新线索",
+    "contacted": "已跟进",
+    "interested": "有意向",
+    "invalid": "无效",
+    "converted": "已转化",
+}
+
 
 def build_leads_query(
     db: Session,
@@ -20,6 +28,8 @@ def build_leads_query(
     keyword: str | None = None,
     source_post_id: int | None = None,
     source_comment_id: int | None = None,
+    is_duplicate: bool | None = None,
+    converted_to_crm: bool | None = None,
 ):
     query = db.query(Lead)
 
@@ -48,6 +58,13 @@ def build_leads_query(
                 Lead.reason.ilike(pattern),
             )
         )
+    if is_duplicate is not None:
+        query = query.filter(Lead.is_duplicate == is_duplicate)
+    if converted_to_crm is not None:
+        if converted_to_crm:
+            query = query.filter(Lead.crm_customer_id.isnot(None))
+        else:
+            query = query.filter(Lead.crm_customer_id.is_(None))
 
     return query
 
@@ -68,6 +85,9 @@ def export_leads_csv(leads: list[Lead]) -> bytes:
             "来源平台",
             "状态",
             "备注",
+            "是否重复",
+            "重复原因",
+            "重复组ID",
             "创建时间",
         ]
     )
@@ -83,11 +103,13 @@ def export_leads_csv(leads: list[Lead]) -> bytes:
                 lead.follow_up_script or "",
                 lead.risk_level or "",
                 lead.platform,
-                lead.status,
+                LEAD_STATUS_LABELS.get(lead.status, lead.status),
                 lead.notes or "",
+                "是" if lead.is_duplicate else "否",
+                lead.duplicate_reason or "",
+                lead.duplicate_group_id or "",
                 lead.created_at.strftime("%Y-%m-%d %H:%M:%S") if lead.created_at else "",
             ]
         )
 
-    # UTF-8 BOM，避免 Excel 中文乱码
     return "\ufeff".encode("utf-8") + output.getvalue().encode("utf-8")

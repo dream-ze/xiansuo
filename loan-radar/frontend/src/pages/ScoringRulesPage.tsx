@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 
 import {
   getScoringRules,
@@ -336,7 +336,7 @@ export default function ScoringRulesPage() {
                       </div>
                     )}
 
-                    {(testResult.evidence as Record<string, unknown>).negation_detected && (
+                    {Boolean((testResult.evidence as Record<string, unknown>).negation_detected) && (
                       <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefcbf", borderRadius: 4 }}>
                         ⚠️ 检测到否定词：{((testResult.evidence as Record<string, unknown>).negation_words as string[])?.join("、")}
                       </div>
@@ -374,3 +374,4 @@ export default function ScoringRulesPage() {
     </div>
   );
 }
+

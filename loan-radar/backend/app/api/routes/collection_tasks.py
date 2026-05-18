@@ -27,7 +27,10 @@ def create_collection_task_endpoint(
     payload: CollectionTaskCreate,
     db: Session = Depends(get_db),
 ):
-    task = create_collection_task(db, payload)
+    try:
+        task = create_collection_task(db, payload)
+    except ValueError as error:
+        return JSONResponse(status_code=400, content=error_response(str(error)))
     return success_response(CrawlTaskOut.model_validate(task).model_dump(mode="json"))
 
 

@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import uuid
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session
 
 from app.models.comment import Comment
+from app.models.lead import Lead
 from app.models.post import Post
 
 logger = logging.getLogger(__name__)
+
+SIMILARITY_THRESHOLD = 0.8
 
 
 def compute_content_hash(content: str | None) -> str:
@@ -17,6 +22,66 @@ def compute_content_hash(content: str | None) -> str:
         return ""
     normalized = content.strip().lower()
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def compute_similarity(text_a: str | None, text_b: str | None) -> float:
+    if not text_a or not text_b:
+        return 0.0
+    return SequenceMatcher(None, text_a.strip().lower(), text_b.strip().lower()).ratio()
+
+
+def check_lead_duplicate(
+    db: Session,
+    platform: str,
+    user_profile_url: str | None,
+    content: str | None,
+) -> tuple[bool, str | None, str | None]:
+    if not user_profile_url and not content:
+        return False, None, None
+
+    content_hash = compute_content_hash(content)
+
+    if user_profile_url:
+        candidates = db.query(Lead).filter(
+            Lead.platform == platform,
+            Lead.user_profile_url == user_profile_url,
+        ).all()
+
+        for candidate in candidates:
+            if not candidate.content:
+                continue
+            similarity = compute_similarity(content, candidate.content)
+            if similarity >= SIMILARITY_THRESHOLD:
+                group_id = candidate.duplicate_group_id or f"dup-{uuid.uuid4().hex[:12]}"
+                reason = f"同用户相似评论(相似度{similarity:.0%})"
+                if not candidate.duplicate_group_id:
+                    candidate.duplicate_group_id = group_id
+                    db.add(candidate)
+                    logger.info(
+                        "assigned existing lead #%d to duplicate group %s (primary)",
+                        candidate.id, group_id,
+                    )
+                return True, group_id, reason
+
+    if content_hash:
+        exact_dup = db.query(Lead).filter(
+            Lead.platform == platform,
+            Lead.content_hash == content_hash,
+        ).first()
+
+        if exact_dup:
+            group_id = exact_dup.duplicate_group_id or f"dup-{uuid.uuid4().hex[:12]}"
+            reason = "相同内容重复"
+            if not exact_dup.duplicate_group_id:
+                exact_dup.duplicate_group_id = group_id
+                db.add(exact_dup)
+                logger.info(
+                    "assigned existing lead #%d to duplicate group %s (primary, exact content)",
+                    exact_dup.id, group_id,
+                )
+            return True, group_id, reason
+
+    return False, None, None
 
 
 @dataclass

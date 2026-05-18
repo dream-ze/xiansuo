@@ -17,6 +17,7 @@ class CrawlTask(Base):
     retry_count = Column(Integer, nullable=False, default=0)
     max_retries = Column(Integer, nullable=False, default=3)
     last_error_type = Column(String(100), nullable=True)
+    failure_type = Column(String(50), nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(Text, nullable=True)
