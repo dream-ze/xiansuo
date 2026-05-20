@@ -236,7 +236,7 @@ def convert_posts_to_notes(
 
             note = Note(
                 user_id=current_user.id,
-                platform_account_id=payload.platform_account_id or 0,
+                platform_account_id=payload.platform_account_id or None,
                 platform=post.platform,
                 note_id=post.post_id,
                 title=post.title or "",

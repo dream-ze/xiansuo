@@ -4,6 +4,7 @@ services:
   postgres:
     image: postgres:16
     container_name: loan-radar-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: loan_radar
       POSTGRES_PASSWORD: loan_radar_password
@@ -23,6 +24,7 @@ services:
       context: ./mediacrawler
       dockerfile: Dockerfile
     container_name: loan-radar-mediacrawler
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
@@ -44,6 +46,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: loan-radar-backend
+    restart: unless-stopped
     ports:
       - "8001:8001"
     environment:
@@ -51,7 +54,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://loan_radar:loan_radar_password@postgres:5432/loan_radar
       MEDIA_CRAWLER_API_URL: http://mediacrawler:8080
       MEDIA_CRAWLER_RAW_DB_PATH: /shared/mediacrawler/raw_tasks.sqlite3
-      SECRET_KEY: change-me-in-production-with-a-strong-random-key-at-least-32-chars
+      SECRET_KEY: ${SECRET_KEY:-}
       SCHEDULER_ENABLED: "true"
       SCHEDULER_INTERVAL_SECONDS: 60
       FRONTEND_SERVE_STATIC: "true"
@@ -65,16 +68,24 @@ services:
         condition: service_healthy
       mediacrawler:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: loan-radar-frontend
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

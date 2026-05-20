@@ -102,8 +102,8 @@ def _dual_write_note(db: Session, post: Post) -> None:
         }
 
     note = Note(
-        user_id=0,
-        platform_account_id=0,
+        user_id=None,
+        platform_account_id=None,
         platform=post.platform,
         note_id=post.post_id,
         title=post.title or "",
@@ -271,20 +271,10 @@ def _save_comments_and_leads(
                 is_duplicate=is_dup,
                 duplicate_group_id=dup_group_id,
                 duplicate_reason=dup_reason,
+                comment_publish_time=collected.publish_time,
             )
             db.add(lead)
             lead_count += 1
-
-            if scoring_result.lead_level == "A" and crawl_task.user_id:
-                _notify(
-                    db,
-                    user_id=crawl_task.user_id,
-                    title=f"发现A级线索: {collected.user_name or '匿名用户'}",
-                    body=(collected.content or "")[:80],
-                    level="warning",
-                    source_type="lead",
-                    source_id=lead.id,
-                )
 
     return inserted_comments, dup_comment_count, lead_count
 
@@ -344,17 +334,6 @@ def run_monitor_source_crawl(db: Session, source: MonitorSource, crawl_task: Cra
         source.last_crawled_at = datetime.now(timezone.utc)
         db.add(source)
         db.commit()
-
-        if lead_count > 0 and crawl_task.user_id:
-            _notify(
-                db,
-                user_id=crawl_task.user_id,
-                title=f"采集完成: 发现 {lead_count} 条线索",
-                body=f"来源: {source.value[:50]} | 帖子 {new_posts_count} | 评论 {new_comments_count}",
-                level="success",
-                source_type="crawl_task",
-                source_id=crawl_task.id,
-            )
 
         return mark_crawl_task_success(
             db=db,
@@ -437,17 +416,6 @@ def _run_monitor_source_with_media_crawler(
         source.last_crawled_at = datetime.now(timezone.utc)
         db.add(source)
         db.commit()
-
-        if lead_count > 0 and crawl_task.user_id:
-            _notify(
-                db,
-                user_id=crawl_task.user_id,
-                title=f"采集完成: 发现 {lead_count} 条线索",
-                body=f"来源: {source.value[:50]} | 帖子 {inserted_posts} | 评论 {inserted_comments}",
-                level="success",
-                source_type="crawl_task",
-                source_id=crawl_task.id,
-            )
 
         return mark_crawl_task_success(
             db=db,

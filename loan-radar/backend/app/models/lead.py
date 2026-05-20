@@ -34,6 +34,7 @@ class Lead(Base):
     is_duplicate = Column(Boolean, nullable=False, default=False, index=True)
     duplicate_group_id = Column(String(64), nullable=True, index=True)
     duplicate_reason = Column(String(255), nullable=True)
+    comment_publish_time = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

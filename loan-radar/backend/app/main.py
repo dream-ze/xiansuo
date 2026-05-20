@@ -1,5 +1,7 @@
 import logging
+import time
 import traceback
+from collections import defaultdict
 
 from contextlib import asynccontextmanager
 
@@ -55,6 +57,45 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
 
+_RATE_LIMIT_WINDOW = 60
+_RATE_LIMIT_MAX_REQUESTS = 20
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "%s %s -> %d (%.1fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    auth_paths = ("/api/auth/login", "/api/auth/register")
+    if request.url.path not in auth_paths:
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    window = _rate_limit_store[client_ip]
+    window[:] = [t for t in window if now - t < _RATE_LIMIT_WINDOW]
+    if len(window) >= _RATE_LIMIT_MAX_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Please try again later."},
+        )
+    window.append(now)
+    return await call_next(request)
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers)
@@ -63,13 +104,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception: %s\n%s", exc, traceback.format_exc())
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    detail = str(exc) if not settings.is_production else "Internal server error"
+    return JSONResponse(status_code=500, content={"detail": detail})
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(auth_router)
 app.include_router(accounts_router)

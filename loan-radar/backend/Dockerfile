@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN alembic upgrade head || true
+RUN alembic upgrade head
 
 EXPOSE 8001
 

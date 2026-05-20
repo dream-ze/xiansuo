@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.models.lead import Lead
 from app.models.post import Post
 from app.schemas.crm import LeadConvertToCrmPayload
@@ -18,7 +19,7 @@ from app.services.export_service import (
 )
 from app.utils.response import error_response, success_response
 
-router = APIRouter(prefix="/api/leads", tags=["leads"])
+router = APIRouter(prefix="/api/leads", tags=["leads"], dependencies=[Depends(require_current_user)])
 
 
 class LeadStatusUpdate(BaseModel):

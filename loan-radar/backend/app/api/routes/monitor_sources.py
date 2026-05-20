@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.deps import require_current_user
+from app.models.user import User
 from app.schemas.monitor_source import (
     MonitorSourceCreate,
     MonitorSourceOut,
@@ -24,7 +26,7 @@ from app.services.task_queue import CrawlTaskQueue
 from app.schemas.crawl_task import CrawlTaskOut
 from app.utils.response import error_response, success_response
 
-router = APIRouter(prefix="/api/monitor-sources", tags=["monitor-sources"])
+router = APIRouter(prefix="/api/monitor-sources", tags=["monitor-sources"], dependencies=[Depends(require_current_user)])
 
 
 def get_db():

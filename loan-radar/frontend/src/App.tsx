@@ -1,4 +1,5 @@
-import { ConfigProvider, theme } from "antd";
+import { Component, type ReactNode } from "react";
+import { Button, ConfigProvider, Result, theme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 
 import AppRoutes from "./routes";
@@ -36,59 +37,106 @@ const SASS_TOKEN = {
   wireframe: false,
 };
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class GlobalErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  handleReload = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Result
+          status="error"
+          title="页面出现错误"
+          subTitle="抱歉，页面发生了意外错误。请尝试刷新页面。"
+          extra={[
+            <Button type="primary" key="reload" onClick={() => window.location.reload()}>
+              刷新页面
+            </Button>,
+            <Button key="back" onClick={() => { this.handleReload(); window.location.href = "/"; }}>
+              返回首页
+            </Button>,
+          ]}
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <ConfigProvider
-      locale={zhCN}
-      theme={{
-        algorithm: theme.defaultAlgorithm,
-        token: SASS_TOKEN,
-        components: {
-          Layout: {
-            siderBg: "#001529",
-            headerBg: "#FFFFFF",
-            bodyBg: "#F0F2F5",
+    <GlobalErrorBoundary>
+      <ConfigProvider
+        locale={zhCN}
+        theme={{
+          algorithm: theme.defaultAlgorithm,
+          token: SASS_TOKEN,
+          components: {
+            Layout: {
+              siderBg: "#001529",
+              headerBg: "#FFFFFF",
+              bodyBg: "#F0F2F5",
+            },
+            Menu: {
+              darkItemBg: "#001529",
+              darkSubMenuItemBg: "#000C17",
+              darkItemSelectedBg: "#2F54EB",
+              darkItemHoverBg: "rgba(47,84,235,0.15)",
+              darkItemColor: "rgba(255,255,255,0.65)",
+              darkItemSelectedColor: "#FFFFFF",
+              darkItemHoverColor: "#FFFFFF",
+              itemBorderRadius: 6,
+              itemMarginInline: 8,
+              itemHeight: 40,
+              collapsedIconSize: 18,
+              iconSize: 16,
+            },
+            Card: {
+              paddingLG: 20,
+              padding: 16,
+            },
+            Table: {
+              headerBg: "#FAFAFA",
+              headerColor: "#1F1F1F",
+              rowHoverBg: "#F5F7FA",
+              headerBorderRadius: 0,
+              fontSize: 13,
+            },
+            Statistic: {
+              titleFontSize: 12,
+              contentFontSize: 24,
+            },
+            Tag: {
+              borderRadiusSM: 4,
+            },
+            Button: {
+              borderRadius: 6,
+              controlHeight: 32,
+            },
           },
-          Menu: {
-            darkItemBg: "#001529",
-            darkSubMenuItemBg: "#000C17",
-            darkItemSelectedBg: "#2F54EB",
-            darkItemHoverBg: "rgba(47,84,235,0.15)",
-            darkItemColor: "rgba(255,255,255,0.65)",
-            darkItemSelectedColor: "#FFFFFF",
-            darkItemHoverColor: "#FFFFFF",
-            itemBorderRadius: 6,
-            itemMarginInline: 8,
-            itemHeight: 40,
-            collapsedIconSize: 18,
-            iconSize: 16,
-          },
-          Card: {
-            paddingLG: 20,
-            padding: 16,
-          },
-          Table: {
-            headerBg: "#FAFAFA",
-            headerColor: "#1F1F1F",
-            rowHoverBg: "#F5F7FA",
-            headerBorderRadius: 0,
-            fontSize: 13,
-          },
-          Statistic: {
-            titleFontSize: 12,
-            contentFontSize: 24,
-          },
-          Tag: {
-            borderRadiusSM: 4,
-          },
-          Button: {
-            borderRadius: 6,
-            controlHeight: 32,
-          },
-        },
-      }}
-    >
-      <AppRoutes />
-    </ConfigProvider>
+        }}
+      >
+        <AppRoutes />
+      </ConfigProvider>
+    </GlobalErrorBoundary>
   );
 }

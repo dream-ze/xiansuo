@@ -122,6 +122,7 @@ export type Lead = {
   is_duplicate: boolean;
   duplicate_group_id: string | null;
   duplicate_reason: string | null;
+  comment_publish_time: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -417,6 +418,7 @@ export type DashboardStats = {
     user_name: string;
     content: string;
     lead_score: number;
+    lead_level: string;
     demand_type: string;
     follow_up_script: string;
     created_at: string;

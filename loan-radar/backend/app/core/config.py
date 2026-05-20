@@ -1,6 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import List
+import secrets as _secrets
+import sys
 
 from dotenv import load_dotenv
 from pydantic import Field, field_validator
@@ -8,6 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
+
+_DEV_SECRET_KEY = "dev-only-change-me-in-production-32ch"
 
 
 class Settings(BaseSettings):
@@ -19,7 +23,7 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
 
-    secret_key: str = Field(default="dev-only-change-me-in-production-32ch", alias="SECRET_KEY")
+    secret_key: str = Field(default=_DEV_SECRET_KEY, alias="SECRET_KEY")
     fernet_key: str = Field(default="", alias="FERNET_KEY")
 
     access_token_expire_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
@@ -47,6 +51,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
 
     @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+    @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
@@ -57,7 +65,21 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    if not s.secret_key or s.secret_key == _DEV_SECRET_KEY:
+        if s.is_production:
+            s.secret_key = _secrets.token_urlsafe(48)
+            print(
+                "[WARN] SECRET_KEY not set in production — auto-generated. "
+                "Tokens will invalidate on restart. Set SECRET_KEY env var for stability.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "[WARN] Using default SECRET_KEY — only acceptable in development.",
+                file=sys.stderr,
+            )
+    return s
 
 
 settings = get_settings()

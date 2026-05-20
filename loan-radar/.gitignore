@@ -2,8 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-.env
-.env.*
 
 node_modules/
 dist/
@@ -16,7 +14,11 @@ Thumbs.db
 
 .browser_state/
 
-# MediaCrawler - 忽略运行时和大文件目录
+.env
+!.env.example
+
+backend/storage/
+
 mediacrawler/.git/
 mediacrawler/.venv/
 mediacrawler/.pytest_cache/

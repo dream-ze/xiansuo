@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.schemas.collection_task import CollectionTaskCreate
 from app.schemas.crawl_task import CrawlTaskOut
 from app.services.collection_task_service import (
@@ -15,7 +16,7 @@ from app.services.collection_task_service import (
 from app.services.task_queue import CrawlTaskQueue
 from app.utils.response import error_response, success_response
 
-router = APIRouter(prefix="/api/collection/tasks", tags=["collection-tasks"])
+router = APIRouter(prefix="/api/collection/tasks", tags=["collection-tasks"], dependencies=[Depends(require_current_user)])
 
 
 def not_found_response() -> JSONResponse:

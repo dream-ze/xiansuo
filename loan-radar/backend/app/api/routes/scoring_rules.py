@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.deps import require_current_user
+
 from app.api.routes.monitor_sources import get_db
 from app.services.lead_scoring_service import LeadScoringService
 from app.services.rule_scoring_service import ScoringRuleSet, load_scoring_rules
@@ -16,7 +18,7 @@ from app.utils.response import error_response, success_response
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/scoring-rules", tags=["scoring-rules"])
+router = APIRouter(prefix="/api/scoring-rules", tags=["scoring-rules"], dependencies=[Depends(require_current_user)])
 
 _RULES_FILE = Path(__file__).resolve().parent.parent.parent / "config" / "scoring_rules.json"
 

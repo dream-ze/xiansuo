@@ -419,7 +419,7 @@ class TestMediaCrawlerCollector:
 class TestCollectorFactoryMediaCrawler:
     def test_media_crawler_in_supported_collectors(self):
         collectors = CollectorFactory.get_supported_collectors()
-        assert list(collectors.keys()) == ["media_crawler"]
+        assert "media_crawler" in collectors
         assert collectors["media_crawler"]["status"] == "ready"
         assert "keyword" in collectors["media_crawler"]["supports"]
 

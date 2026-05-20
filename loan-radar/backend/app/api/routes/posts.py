@@ -5,12 +5,13 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.models.lead import Lead
 from app.models.post import Post
 from app.schemas.post import PostOut
 from app.utils.response import error_response, success_response
 
-router = APIRouter(tags=["posts"])
+router = APIRouter(tags=["posts"], dependencies=[Depends(require_current_user)])
 
 
 def _enrich_post_out(post: Post, db: Session) -> dict:

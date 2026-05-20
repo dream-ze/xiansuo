@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.schemas.daily_report import DailyReportOut
 from app.services.daily_report_service import (
     generate_daily_report,
@@ -12,7 +13,7 @@ from app.services.daily_report_service import (
 from app.services.report_export_service import export_report_markdown
 from app.utils.response import error_response, success_response
 
-router = APIRouter(prefix="/api/daily-reports", tags=["daily-reports"])
+router = APIRouter(prefix="/api/daily-reports", tags=["daily-reports"], dependencies=[Depends(require_current_user)])
 
 
 @router.post("/generate")

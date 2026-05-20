@@ -5,12 +5,13 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.models.comment import Comment
 from app.models.lead import Lead
 from app.schemas.comment import CommentOut
 from app.utils.response import success_response
 
-router = APIRouter(tags=["comments"])
+router = APIRouter(tags=["comments"], dependencies=[Depends(require_current_user)])
 
 
 def _enrich_comment_out(comment: Comment, db: Session) -> dict:

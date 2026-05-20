@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.models.crm import CrmCustomer, CrmFollowRecord
 from app.schemas.crm import (
     CRM_CUSTOMER_STATUSES,
@@ -18,7 +19,7 @@ from app.schemas.crm import (
 from app.services.crm_service import apply_reminder_filter, build_crm_dashboard
 from app.utils.response import error_response, success_response
 
-router = APIRouter(prefix="/api/crm", tags=["crm"])
+router = APIRouter(prefix="/api/crm", tags=["crm"], dependencies=[Depends(require_current_user)])
 
 
 def not_found_response() -> JSONResponse:

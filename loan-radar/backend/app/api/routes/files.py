@@ -179,7 +179,7 @@ def download_export(file_name: str, current_user: User = Depends(require_current
 
 
 ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi", ".mkv"}
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 
 @router.post("/upload")
@@ -192,7 +192,7 @@ async def upload_file(file: UploadFile, current_user: User = Depends(require_cur
 
     content = await file.read()
     if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件大小超过 100MB 限制")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件大小超过 50MB 限制")
 
     asset_type = "video" if ext in {".mp4", ".mov", ".avi", ".mkv"} else "image"
     file_name = f"xhs-upload-u{current_user.id}-{uuid4().hex}{ext}"

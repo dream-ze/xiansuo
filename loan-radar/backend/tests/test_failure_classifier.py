@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
 from app.collectors.base import CollectionAuthError, CollectionNoDataError, CollectionRequestError
+from app.core.database import SessionLocal
+from app.core.security import create_access_token, hash_password
 from app.main import app
+from app.models.crawl_task import CrawlTask
+from app.models.login_session import LoginSession
+from app.models.user import User
 from app.services.failure_classifier import FailureType, classify_failure_type
 
 
@@ -164,9 +170,24 @@ def api_client():
     return TestClient(app)
 
 
+@pytest.fixture
+def auth_headers():
+    db = SessionLocal()
+    db.execute(delete(LoginSession))
+    db.execute(delete(User))
+    db.commit()
+    user = User(username="testuser", password_hash=hash_password("testpass123"))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_access_token(user.id)
+    db.close()
+    return {"Authorization": f"Bearer {token}"}
+
+
 class TestFailureTypesAPI:
-    def test_failure_types_meta_endpoint(self, api_client):
-        response = api_client.get("/api/crawl-tasks/failure-types/meta")
+    def test_failure_types_meta_endpoint(self, api_client, auth_headers):
+        response = api_client.get("/api/crawl-tasks/failure-types/meta", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -190,7 +211,7 @@ class TestFailureTypesAPI:
             assert "suggestion" in meta[ft]
             assert meta[ft]["value"] == ft
 
-    def test_failure_type_in_crawl_task_response(self, api_client):
+    def test_failure_type_in_crawl_task_response(self, api_client, auth_headers):
         from app.core.database import SessionLocal
         from app.models.crawl_task import CrawlTask
 
@@ -223,7 +244,7 @@ class TestFailureTypesAPI:
             db.close()
 
         try:
-            response = api_client.get(f"/api/crawl-tasks/{task_id}")
+            response = api_client.get(f"/api/crawl-tasks/{task_id}", headers=auth_headers)
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True

@@ -2,12 +2,13 @@
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.collectors.config import CollectorConfig
+from app.core.deps import require_current_user
 from app.collectors.factory import CollectorFactory
 
-router = APIRouter(prefix="/api/collectors", tags=["collectors"])
+router = APIRouter(prefix="/api/collectors", tags=["collectors"], dependencies=[Depends(require_current_user)])
 
 _SENSITIVE_KEYWORDS = {
     "cookie",

@@ -5,12 +5,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.schemas.monitor_source import MonitorSourceOut
 from app.schemas.pending_competitor import PendingCompetitorOut
 from app.services.competitor_discovery_service import CompetitorDiscoveryService
 from app.utils.response import error_response, success_response
 
-router = APIRouter(prefix="/api/pending-competitors", tags=["pending-competitors"])
+router = APIRouter(prefix="/api/pending-competitors", tags=["pending-competitors"], dependencies=[Depends(require_current_user)])
 service = CompetitorDiscoveryService()
 
 

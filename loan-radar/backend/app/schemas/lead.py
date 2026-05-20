@@ -33,5 +33,6 @@ class LeadOut(BaseModel):
     is_duplicate: bool = False
     duplicate_group_id: str | None = None
     duplicate_reason: str | None = None
+    comment_publish_time: datetime | None = None
     created_at: datetime
     updated_at: datetime

@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.routes.monitor_sources import get_db
+from app.core.deps import require_current_user
 from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
 from app.models.crm import CrmCustomer
@@ -15,7 +16,7 @@ from app.models.pending_competitor import PendingCompetitorAccount
 from app.models.post import Post
 from app.utils.response import success_response
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(require_current_user)])
 
 
 def _count_today(db: Session, model, today):

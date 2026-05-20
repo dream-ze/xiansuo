@@ -91,6 +91,8 @@ export default function LeadDetailDrawer({ open, lead, onClose, onUpdated }: Pro
   const [draftNotes, setDraftNotes] = useState<string>(lead?.notes ?? "");
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [sourcePost, setSourcePost] = useState<Post | null>(null);
+  const [postLoading, setPostLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -99,18 +101,6 @@ export default function LeadDetailDrawer({ open, lead, onClose, onUpdated }: Pro
       setDraftNotes(lead.notes ?? "");
     }
   }, [lead]);
-
-  if (!lead) return null;
-
-  const matchedWords = getMatchedWords(lead.evidence);
-  const amounts = getAmounts(lead.evidence);
-  const breakdown = getScoreBreakdown(lead.evidence);
-  const negation = getNegationInfo(lead.evidence);
-  const riskKws = getRiskKeywords(lead.evidence);
-  const hasChanges = draftStatus !== lead.status || draftNotes !== (lead.notes ?? "");
-
-  const [sourcePost, setSourcePost] = useState<Post | null>(null);
-  const [postLoading, setPostLoading] = useState(false);
 
   useEffect(() => {
     if (lead?.source_post_id) {
@@ -123,6 +113,15 @@ export default function LeadDetailDrawer({ open, lead, onClose, onUpdated }: Pro
       setSourcePost(null);
     }
   }, [lead?.source_post_id]);
+
+  if (!lead) return null;
+
+  const matchedWords = getMatchedWords(lead.evidence);
+  const amounts = getAmounts(lead.evidence);
+  const breakdown = getScoreBreakdown(lead.evidence);
+  const negation = getNegationInfo(lead.evidence);
+  const riskKws = getRiskKeywords(lead.evidence);
+  const hasChanges = draftStatus !== lead.status || draftNotes !== (lead.notes ?? "");
 
   async function handleSaveStatus() {
     if (!hasChanges || !lead) return;

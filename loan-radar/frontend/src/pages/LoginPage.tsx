@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button, Card, Form, Input, message, Tabs } from "antd";
 
-const API_BASE = import.meta.env?.DEV ? "" : "http://localhost:8000";
+const API_BASE = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.DEV ? "" : "http://localhost:8001";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);

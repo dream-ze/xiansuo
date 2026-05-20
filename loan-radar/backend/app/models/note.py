@@ -14,8 +14,8 @@ class Note(Base):
     __tablename__ = "notes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, default=0)
-    platform_account_id: Mapped[int] = mapped_column(ForeignKey("platform_accounts.id"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True, default=None)
+    platform_account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("platform_accounts.id"), index=True, nullable=True, default=None)
     platform: Mapped[str] = mapped_column(String(32), index=True)
     note_id: Mapped[str] = mapped_column(String(128), index=True)
     title: Mapped[str] = mapped_column(String(512), default="")

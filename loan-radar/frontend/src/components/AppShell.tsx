@@ -7,7 +7,6 @@ import {
   KeyOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  QuestionCircleOutlined,
   RadarChartOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
@@ -18,7 +17,6 @@ import {
   StarOutlined,
   TeamOutlined,
   ThunderboltOutlined,
-  UserOutlined,
   VideoCameraOutlined,
   AimOutlined,
   BarChartOutlined,
@@ -207,7 +205,7 @@ export default function AppShell() {
     }
     const label = BREADCRUMB_MAP[location.pathname];
     if (label) {
-      items.push({ title: label });
+      items.push({ title: <span>{label}</span> });
     }
     return items;
   }, [location.pathname, navigate]);
@@ -352,15 +350,6 @@ export default function AppShell() {
             </div>
           </div>
           <Space size={isMobile ? 8 : 16} align="center" style={{ flexShrink: 0 }}>
-            {!isMobile && (
-              <Input
-                placeholder="搜索功能..."
-                prefix={<SearchOutlined style={{ color: "#BFBFBF" }} />}
-                style={{ width: 200, height: 32 }}
-                allowClear
-                size="small"
-              />
-            )}
             <Dropdown popupRender={() => notificationDropdownContent} trigger={["click"]} placement="bottomRight">
               <Badge count={unreadCount} size="small" offset={[-2, 2]}>
                 <Button type="text" icon={<BellOutlined style={{ fontSize: 16 }} />} style={{ display: "flex", alignItems: "center", justifyContent: "center" }} />
@@ -368,10 +357,14 @@ export default function AppShell() {
             </Dropdown>
             <Dropdown
               menu={{
+                onClick: ({ key }) => {
+                  if (key === "logout") {
+                    localStorage.removeItem("access_token");
+                    localStorage.removeItem("refresh_token");
+                    window.location.href = "/login";
+                  }
+                },
                 items: [
-                  { key: "profile", icon: <UserOutlined />, label: "个人中心" },
-                  { key: "help", icon: <QuestionCircleOutlined />, label: "帮助文档" },
-                  { type: "divider" },
                   { key: "logout", label: "退出登录" },
                 ],
               }}

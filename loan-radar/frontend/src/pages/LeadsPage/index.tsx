@@ -230,11 +230,18 @@ export default function LeadsPage() {
       render: (dup: boolean) => dup ? <Tag color="warning" style={{ margin: 0, fontSize: 11 }}>重复</Tag> : null,
     },
     {
-      title: "时间",
-      dataIndex: "created_at",
+      title: "评论时间",
+      dataIndex: "comment_publish_time",
       width: 120,
-      sorter: (a: Lead, b: Lead) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      render: (v: string) => <Text type="secondary" style={{ fontSize: 12 }}>{dayjs(v).format("MM-DD HH:mm")}</Text>,
+      sorter: (a: Lead, b: Lead) => {
+        const ta = a.comment_publish_time || a.created_at;
+        const tb = b.comment_publish_time || b.created_at;
+        return new Date(ta).getTime() - new Date(tb).getTime();
+      },
+      render: (_: unknown, record: Lead) => {
+        const v = record.comment_publish_time || record.created_at;
+        return <Text type="secondary" style={{ fontSize: 12 }}>{dayjs(v).format("MM-DD HH:mm")}</Text>;
+      },
     },
     {
       title: "操作",
