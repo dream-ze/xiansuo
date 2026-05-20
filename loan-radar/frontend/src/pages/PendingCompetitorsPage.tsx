@@ -1,97 +1,70 @@
-import { useEffect, useMemo, useState } from "react";
+import { CheckOutlined, CloseOutlined, ReloadOutlined, RestOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Card, Col, Input, Row, Select, Space, Table, Tag, Typography, message } from "antd";
+import dayjs from "dayjs";
+import { useEffect, useState } from "react";
 
 import {
   approvePendingCompetitor,
   getPendingCompetitors,
   ignorePendingCompetitor,
   type PendingCompetitor,
-  type PendingCompetitorQueryParams,
-} from "../api/client";
+} from "../api";
 
-const PLATFORM_OPTIONS = ["", "xhs", "douyin", "zhihu", "other"];
-const STATUS_OPTIONS = ["", "pending", "approved", "ignored"];
+const { Title, Text, Paragraph } = Typography;
 
-function statusText(status: string) {
-  const mapping: Record<string, string> = {
-    pending: "待审核",
-    approved: "已通过",
-    ignored: "已忽略",
-  };
-  return mapping[status] ?? status;
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
+const PLATFORM_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "xhs", label: "小红书" },
+  { value: "douyin", label: "抖音" },
+  { value: "zhihu", label: "知乎" },
+  { value: "other", label: "其他" },
+];
+const PLATFORM_LABELS: Record<string, string> = { xhs: "小红书", douyin: "抖音", zhihu: "知乎" };
+const STATUS_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "pending", label: "待审核" },
+  { value: "approved", label: "已通过" },
+  { value: "ignored", label: "已忽略" },
+];
+const STATUS_COLORS: Record<string, string> = { pending: "warning", approved: "success", ignored: "default" };
+const STATUS_LABELS: Record<string, string> = { pending: "待审核", approved: "已通过", ignored: "已忽略" };
 
 export default function PendingCompetitorsPage() {
   const [items, setItems] = useState<PendingCompetitor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [filters, setFilters] = useState<PendingCompetitorQueryParams>({
-    platform: "",
-    status: "pending",
-  });
+  const [platform, setPlatform] = useState("");
+  const [status, setStatus] = useState("pending");
   const [minScore, setMinScore] = useState("");
 
-  const hasItems = useMemo(() => items.length > 0, [items]);
-
-  async function loadData(nextFilters = filters, nextMinScore = minScore) {
+  async function loadData() {
     setLoading(true);
-    setError(null);
-
     try {
       const result = await getPendingCompetitors({
-        platform: nextFilters.platform || undefined,
-        status: nextFilters.status || undefined,
-        min_score: nextMinScore === "" ? undefined : Number(nextMinScore),
+        platform: platform || undefined,
+        status: status || undefined,
+        min_score: minScore === "" ? undefined : Number(minScore),
       });
       setItems(result);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "加载同行发现池失败");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "加载同行发现池失败");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadData(filters, minScore);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void loadData();
   }, []);
-
-  async function applyFilters() {
-    await loadData(filters, minScore);
-  }
-
-  async function resetFilters() {
-    const nextFilters: PendingCompetitorQueryParams = { platform: "", status: "pending" };
-    setFilters(nextFilters);
-    setMinScore("");
-    await loadData(nextFilters, "");
-  }
 
   async function handleApprove(item: PendingCompetitor) {
     setBusyId(item.id);
-    setError(null);
-    setActionMessage(null);
-
     try {
       const result = await approvePendingCompetitor(item.id);
-      setActionMessage(`已通过：${result.pending_competitor.account_name}，并新增监控源 ${result.monitor_source.name}`);
-      await loadData(filters, minScore);
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "审核通过失败");
+      message.success(`已通过：${result.pending_competitor.account_name}，新增监控源 ${result.monitor_source.name}`);
+      await loadData();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "审核通过失败");
     } finally {
       setBusyId(null);
     }
@@ -99,167 +72,120 @@ export default function PendingCompetitorsPage() {
 
   async function handleIgnore(item: PendingCompetitor) {
     setBusyId(item.id);
-    setError(null);
-    setActionMessage(null);
-
     try {
       await ignorePendingCompetitor(item.id);
-      setActionMessage(`已忽略：${item.account_name}`);
-      await loadData(filters, minScore);
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "忽略失败");
+      message.success(`已忽略：${item.account_name}`);
+      await loadData();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "忽略失败");
     } finally {
       setBusyId(null);
     }
   }
 
+  const columns = [
+    { title: "ID", dataIndex: "id", width: 60 },
+    {
+      title: "平台", dataIndex: "platform", width: 90,
+      render: (p: string) => <Tag>{PLATFORM_LABELS[p] || p}</Tag>,
+    },
+    { title: "账号名", dataIndex: "account_name", ellipsis: true, width: 160 },
+    { title: "来源关键词", dataIndex: "source_keyword", width: 120, render: (v: string) => v || "-" },
+    {
+      title: "综合分", dataIndex: "competitor_score", width: 90,
+      render: (v: number) => <Text strong>{v.toFixed(1)}</Text>,
+    },
+    {
+      title: "状态", dataIndex: "status", width: 90,
+      render: (s: string) => <Tag color={STATUS_COLORS[s] || "default"}>{STATUS_LABELS[s] || s}</Tag>,
+    },
+    { title: "发现原因", dataIndex: "discover_reason", ellipsis: true, render: (v: string) => v || "-" },
+    {
+      title: "发现时间", dataIndex: "created_at", width: 130,
+      render: (v: string) => dayjs(v).format("MM-DD HH:mm"),
+    },
+    {
+      title: "操作", width: 140,
+      render: (_: unknown, record: PendingCompetitor) => {
+        const canReview = record.status === "pending";
+        return (
+          <Space size={4}>
+            <Button
+              size="small"
+              type="primary"
+              icon={<CheckOutlined />}
+              onClick={() => handleApprove(record)}
+              disabled={!canReview || busyId === record.id}
+              loading={busyId === record.id}
+            >
+              通过
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<CloseOutlined />}
+              onClick={() => handleIgnore(record)}
+              disabled={!canReview || busyId === record.id}
+            >
+              忽略
+            </Button>
+          </Space>
+        );
+      },
+    },
+  ];
+
   return (
-    <main className="page-shell">
-      <header className="page-header">
-        <div>
-          <p className="page-eyebrow">同行账号发现池</p>
-          <h1>智获客雷达</h1>
-          <p className="page-description">查看待审核同行账号，支持审核通过加入监控源或忽略。</p>
-        </div>
-      </header>
+    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px 20px 48px" }}>
+      <div style={{ marginBottom: 20 }}>
+        <Text type="secondary" style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase" }}>同行发现</Text>
+        <Title level={2} style={{ margin: "4px 0 8px" }}>同行账号发现池</Title>
+        <Paragraph type="secondary">查看待审核同行账号，审核通过后自动加入监控源。</Paragraph>
+      </div>
 
-      <section className="card">
-        <div className="card-header card-header-row">
-          <div>
-            <h2>筛选条件</h2>
-            <p>支持平台、状态、最低评分筛选。</p>
-          </div>
-          <div className="action-row">
-            <button type="button" onClick={() => void applyFilters()} disabled={loading}>查询</button>
-            <button type="button" onClick={() => void resetFilters()} disabled={loading}>重置</button>
-          </div>
-        </div>
-
-        <div className="filter-grid">
-          <label>
-            平台
-            <select
-              value={(filters.platform as string) ?? ""}
-              onChange={(event) => setFilters((prev) => ({ ...prev, platform: event.target.value }))}
-            >
-              {PLATFORM_OPTIONS.map((value) => (
-                <option key={value} value={value}>
-                  {value || "全部"}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            状态
-            <select
-              value={(filters.status as string) ?? ""}
-              onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
-            >
-              {STATUS_OPTIONS.map((value) => (
-                <option key={value} value={value}>
-                  {value || "全部"}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            最低评分
-            <input
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Row gutter={[12, 12]} align="middle">
+          <Col xs={8} sm={6} md={4}>
+            <Select value={platform} onChange={setPlatform} options={PLATFORM_OPTIONS} style={{ width: "100%" }} placeholder="平台" />
+          </Col>
+          <Col xs={8} sm={6} md={4}>
+            <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: "100%" }} placeholder="状态" />
+          </Col>
+          <Col xs={8} sm={6} md={4}>
+            <Input
               type="number"
               min={0}
               max={100}
               value={minScore}
-              onChange={(event) => setMinScore(event.target.value)}
-              placeholder="0-100"
+              onChange={(e) => setMinScore(e.target.value)}
+              placeholder="最低评分"
+              allowClear
             />
-          </label>
-        </div>
-      </section>
+          </Col>
+          <Col>
+            <Space>
+              <Button type="primary" icon={<SearchOutlined />} onClick={loadData} loading={loading}>查询</Button>
+              <Button icon={<RestOutlined />} onClick={() => { setPlatform(""); setStatus("pending"); setMinScore(""); }}>重置</Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
 
-      <section className="card">
-        <div className="card-header card-header-row">
-          <div>
-            <h2>待审核账号列表</h2>
-            <p>当前 {items.length} 条记录。</p>
-          </div>
-          <button type="button" onClick={() => void loadData(filters, minScore)} disabled={loading}>刷新列表</button>
-        </div>
-
-        {actionMessage ? <div className="state-panel state-empty"><p>{actionMessage}</p></div> : null}
-        {loading ? <p className="state-text">加载中...</p> : null}
-        {error ? (
-          <div className="state-panel state-error">
-            <p>{error}</p>
-            <button type="button" onClick={() => void loadData(filters, minScore)}>重试</button>
-          </div>
-        ) : null}
-        {!loading && !error && !hasItems ? (
-          <div className="state-panel state-empty">
-            <p>暂无符合条件的同行账号。</p>
-          </div>
-        ) : null}
-
-        {!loading && !error && hasItems ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>平台</th>
-                  <th>账号名</th>
-                  <th>来源关键词</th>
-                  <th>综合分</th>
-                  <th>状态</th>
-                  <th>发现原因</th>
-                  <th>发现时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const canReview = item.status === "pending";
-                  const isBusy = busyId === item.id;
-                  return (
-                    <tr key={item.id}>
-                      <td>{item.id}</td>
-                      <td>{item.platform}</td>
-                      <td className="cell-break">{item.account_name}</td>
-                      <td>{item.source_keyword || "-"}</td>
-                      <td>{item.competitor_score.toFixed(2)}</td>
-                      <td>
-                        <span className={`status-pill pending-status-${item.status}`}>{statusText(item.status)}</span>
-                      </td>
-                      <td className="cell-break">{item.discover_reason || "-"}</td>
-                      <td>{formatDateTime(item.created_at)}</td>
-                      <td>
-                        <div className="action-row">
-                          <button
-                            type="button"
-                            onClick={() => void handleApprove(item)}
-                            disabled={!canReview || isBusy}
-                          >
-                            {isBusy ? "处理中..." : "审核通过"}
-                          </button>
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => void handleIgnore(item)}
-                            disabled={!canReview || isBusy}
-                          >
-                            忽略
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
-    </main>
+      <Card
+        title={`同行账号列表（${items.length} 条）`}
+        size="small"
+        extra={<Button icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>}
+      >
+        <Table
+          dataSource={items}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          size="small"
+          scroll={{ x: 1000 }}
+          pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条` }}
+        />
+      </Card>
+    </div>
   );
 }

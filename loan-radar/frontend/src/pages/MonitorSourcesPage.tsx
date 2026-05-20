@@ -13,7 +13,7 @@ import {
   type CrawlTask,
   type MonitorSource,
   type MonitorSourceCreatePayload,
-} from "../api/client";
+} from "../api/index";
 
 const PLATFORM_OPTIONS = [
   { label: "小红书", value: "xhs" },
@@ -52,9 +52,10 @@ export function getDynamicFieldKeysByCollectorType(collectorType: string): strin
       "enable_comments",
       "max_posts",
       "max_comments_per_post",
+      "time_range",
     ];
   }
-  return ["max_posts", "max_comments_per_post"];
+  return ["max_posts", "max_comments_per_post", "time_range"];
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -91,6 +92,7 @@ export type CreateFormState = {
   cookies: string;
   login_type: string;
   enable_comments: boolean;
+  time_range: string;
 };
 
 export const DEFAULT_CREATE_FORM: CreateFormState = {
@@ -107,6 +109,7 @@ export const DEFAULT_CREATE_FORM: CreateFormState = {
   cookies: "",
   login_type: "qrcode",
   enable_comments: true,
+  time_range: "",
 };
 
 function toPositiveInteger(value: string, fieldName: string): number {
@@ -145,6 +148,10 @@ export function buildPayloadFromForm(form: CreateFormState): MonitorSourceCreate
     if (cookies) {
       config.cookies = cookies;
     }
+  }
+
+  if (form.time_range) {
+    config.time_range = form.time_range;
   }
 
   const finalValue = payloadValue;
@@ -558,6 +565,23 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
           )}
 
           <label>
+            <span>时间范围 (time_range)</span>
+            <select
+              value={createForm.time_range}
+              onChange={(event) => setCreateForm((current) => ({ ...current, time_range: event.target.value }))}
+            >
+              <option value="">不限（采集全部）</option>
+              <option value="7d">最近 7 天</option>
+              <option value="15d">最近 15 天</option>
+              <option value="30d">最近 30 天</option>
+              <option value="90d">最近 90 天</option>
+            </select>
+            <small className="field-hint">
+              设置后仅入库发布时间在范围内的帖子和评论。设置时间范围会自动提升采集量以确保覆盖。
+            </small>
+          </label>
+
+          <label>
             <span>max_posts</span>
             <input
               type="number"
@@ -662,6 +686,7 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
                   <th>名称</th>
                   <th>内容/链接</th>
                   <th>采集器</th>
+                  <th>时间范围</th>
                   <th>状态</th>
                   <th>定时采集</th>
                   <th>最后采集时间</th>
@@ -682,6 +707,7 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
                       <td>{item.name}</td>
                       <td className="cell-break">{item.value}</td>
                       <td>{typeof item.config === "object" && item.config && "collector_type" in item.config ? String((item.config as Record<string, unknown>).collector_type) : "mock"}</td>
+                      <td>{typeof item.config === "object" && item.config && "time_range" in item.config ? String((item.config as Record<string, unknown>).time_range) : "-"}</td>
                       <td>{item.enabled ? "启用" : "停用"}</td>
                       <td>
                         {item.schedule_enabled ? (

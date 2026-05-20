@@ -1,7 +1,7 @@
 :root {
-  font-family: sans-serif;
-  color: #1f2937;
-  background: #f7f7f2;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  color: #1F1F1F;
+  background: #F0F2F5;
 }
 
 * {
@@ -10,7 +10,28 @@
 
 body {
   margin: 0;
-  background: #f7f7f2;
+  background: #F0F2F5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (max-width: 768px) {
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+  .ant-table-wrapper .ant-table {
+    min-width: 600px;
+  }
+  .ant-card-body {
+    padding: 12px !important;
+  }
+  .ant-drawer .ant-drawer-content-wrapper {
+    max-width: 100vw;
+  }
+  .ant-modal {
+    max-width: calc(100vw - 32px);
+    margin: 16px auto;
+  }
 }
 
 button,

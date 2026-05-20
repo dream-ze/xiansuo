@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
 from app.collectors import CollectorFactory
 from app.collectors.base import CollectionAuthError, CollectionNoDataError, CollectionRequestError
+from app.collectors.config import CollectorConfig
 from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
 from app.models.lead import Lead
 from app.models.monitor_source import MonitorSource
+from app.models.note import Note, NoteComment
 from app.models.post import Post
 from app.services.competitor_discovery_service import CompetitorDiscoveryService
 from app.services.crawl_task_service import (
@@ -20,9 +22,11 @@ from app.services.crawl_task_service import (
     mark_crawl_task_success,
     update_crawl_task_progress,
 )
+from app.services.cookie_resolution_service import inject_cookies_into_config
 from app.services.dedup_service import batch_dedup_comments, batch_dedup_posts, check_lead_duplicate, compute_content_hash
 from app.services.failure_classifier import FailureType, classify_failure_type
 from app.services.lead_scoring_service import LeadScoringService
+from app.services.notification_service import _create as _notify
 
 
 def _sanitize_error_message(error: Exception | str) -> str:
@@ -44,6 +48,97 @@ def _should_use_media_crawler(source: MonitorSource) -> bool:
     config = source.config if isinstance(source.config, dict) else {}
     collector_type = str(config.get("collector_type") or "").strip().lower()
     return collector_type == "media_crawler"
+
+
+def _get_time_range_cutoff(source: MonitorSource) -> datetime | None:
+    config = CollectorConfig.parse(source.config)
+    days = config.get_time_range_days()
+    if days is None:
+        return None
+    return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def _filter_posts_by_time_range(
+    posts: list,
+    cutoff: datetime | None,
+) -> list:
+    if cutoff is None:
+        return posts
+    return [p for p in posts if p.publish_time is not None and p.publish_time >= cutoff]
+
+
+def _filter_comments_by_time_range(
+    comments: list,
+    cutoff: datetime | None,
+) -> list:
+    if cutoff is None:
+        return comments
+    return [c for c in comments if c.publish_time is not None and c.publish_time >= cutoff]
+
+
+def _get_effective_max_posts(source: MonitorSource) -> int:
+    config = CollectorConfig.parse(source.config)
+    return config.get_effective_max_posts()
+
+
+def _dual_write_note(db: Session, post: Post) -> None:
+    from sqlalchemy import select as sa_select
+
+    existing = db.scalar(
+        sa_select(Note).where(
+            Note.platform == post.platform,
+            Note.note_id == post.post_id,
+        )
+    )
+    if existing is not None:
+        return
+
+    raw_json = post.raw_data if isinstance(post.raw_data, dict) else {}
+    if not raw_json:
+        raw_json = {
+            "liked_count": post.like_count,
+            "collected_count": post.collect_count,
+            "comment_count": post.comment_count,
+        }
+
+    note = Note(
+        user_id=0,
+        platform_account_id=0,
+        platform=post.platform,
+        note_id=post.post_id,
+        title=post.title or "",
+        content=post.content or "",
+        author_name=post.author_name or "",
+        raw_json=raw_json,
+    )
+    db.add(note)
+    db.flush()
+
+    post_comments = db.scalars(
+        sa_select(Comment).where(
+            Comment.platform == post.platform,
+            Comment.post_id == post.post_id,
+        )
+    ).all()
+
+    for comment in post_comments:
+        existing_nc = db.scalar(
+            sa_select(NoteComment).where(
+                NoteComment.note_id == note.id,
+                NoteComment.comment_id == comment.comment_id,
+            )
+        )
+        if existing_nc is not None:
+            continue
+        nc = NoteComment(
+            note_id=note.id,
+            comment_id=comment.comment_id,
+            user_name=comment.user_name or "",
+            content=comment.content or "",
+            like_count=comment.like_count,
+            raw_json=comment.raw_data if isinstance(comment.raw_data, dict) else None,
+        )
+        db.add(nc)
 
 
 def _save_posts_batch(
@@ -89,6 +184,8 @@ def _save_posts_batch(
         db.flush()
         post_id_map[collected.post_id] = post.id
         created_post_ids.append(post.id)
+
+        _dual_write_note(db, post)
 
     if updated_posts:
         db.flush()
@@ -178,6 +275,17 @@ def _save_comments_and_leads(
             db.add(lead)
             lead_count += 1
 
+            if scoring_result.lead_level == "A" and crawl_task.user_id:
+                _notify(
+                    db,
+                    user_id=crawl_task.user_id,
+                    title=f"发现A级线索: {collected.user_name or '匿名用户'}",
+                    body=(collected.content or "")[:80],
+                    level="warning",
+                    source_type="lead",
+                    source_id=lead.id,
+                )
+
     return inserted_comments, dup_comment_count, lead_count
 
 
@@ -195,25 +303,32 @@ def run_monitor_source_crawl(db: Session, source: MonitorSource, crawl_task: Cra
         return _run_monitor_source_with_media_crawler(db, source, crawl_task)
 
     try:
+        effective_config = inject_cookies_into_config(db, source)
+        effective_config["max_posts"] = _get_effective_max_posts(source)
+
         collector_source = SimpleNamespace(
             source_type=source.source_type,
             platform=source.platform,
             value=source.value,
-            config=(source.config or {}),
+            config=effective_config,
         )
         collector = CollectorFactory.create(collector_source)
         collector_result = collector.collect(collector_source)
 
+        cutoff = _get_time_range_cutoff(source)
+        filtered_posts = _filter_posts_by_time_range(collector_result.posts, cutoff)
+        filtered_comments = _filter_comments_by_time_range(collector_result.comments, cutoff)
+
         update_crawl_task_progress(db, crawl_task, "saving_posts")
 
         post_id_map, created_post_ids, new_posts_count, dup_posts_count, _updated_posts = _save_posts_batch(
-            db, collector_result.posts, source,
+            db, filtered_posts, source,
         )
 
         update_crawl_task_progress(db, crawl_task, "scoring_leads")
 
         new_comments_count, dup_comments_count, lead_count = _save_comments_and_leads(
-            db, collector_result.comments, source, post_id_map, set(),
+            db, filtered_comments, source, post_id_map, set(),
         )
 
         discovered_competitor_count = 0
@@ -229,6 +344,17 @@ def run_monitor_source_crawl(db: Session, source: MonitorSource, crawl_task: Cra
         source.last_crawled_at = datetime.now(timezone.utc)
         db.add(source)
         db.commit()
+
+        if lead_count > 0 and crawl_task.user_id:
+            _notify(
+                db,
+                user_id=crawl_task.user_id,
+                title=f"采集完成: 发现 {lead_count} 条线索",
+                body=f"来源: {source.value[:50]} | 帖子 {new_posts_count} | 评论 {new_comments_count}",
+                level="success",
+                source_type="crawl_task",
+                source_id=crawl_task.id,
+            )
 
         return mark_crawl_task_success(
             db=db,
@@ -271,24 +397,31 @@ def _run_monitor_source_with_media_crawler(
     try:
         update_crawl_task_progress(db, crawl_task, "collecting")
 
+        effective_config = inject_cookies_into_config(db, source)
+        effective_config["max_posts"] = _get_effective_max_posts(source)
+
         collector_source = SimpleNamespace(
             source_type=source.source_type,
             platform=source.platform,
             value=source.value,
-            config=(source.config or {}),
+            config=effective_config,
         )
         collector_result = collector.collect(collector_source)
+
+        cutoff = _get_time_range_cutoff(source)
+        filtered_posts = _filter_posts_by_time_range(collector_result.posts, cutoff)
+        filtered_comments = _filter_comments_by_time_range(collector_result.comments, cutoff)
 
         update_crawl_task_progress(db, crawl_task, "saving_posts")
 
         post_id_map, created_post_ids, inserted_posts, dup_posts, _updated_posts = _save_posts_batch(
-            db, collector_result.posts, source,
+            db, filtered_posts, source,
         )
 
         update_crawl_task_progress(db, crawl_task, "scoring_leads")
 
         inserted_comments, dup_comments, lead_count = _save_comments_and_leads(
-            db, collector_result.comments, source, post_id_map, set(),
+            db, filtered_comments, source, post_id_map, set(),
         )
 
         discovered_competitor_count = 0
@@ -304,6 +437,17 @@ def _run_monitor_source_with_media_crawler(
         source.last_crawled_at = datetime.now(timezone.utc)
         db.add(source)
         db.commit()
+
+        if lead_count > 0 and crawl_task.user_id:
+            _notify(
+                db,
+                user_id=crawl_task.user_id,
+                title=f"采集完成: 发现 {lead_count} 条线索",
+                body=f"来源: {source.value[:50]} | 帖子 {inserted_posts} | 评论 {inserted_comments}",
+                level="success",
+                source_type="crawl_task",
+                source_id=crawl_task.id,
+            )
 
         return mark_crawl_task_success(
             db=db,

@@ -1,5 +1,4 @@
-from app.collectors.page_parsers.factory import PageParserFactory
-from app.collectors.page_parsers.generic import GenericPostParser
+from app.collectors._deprecated.page_parsers.factory import PageParserFactory
+from app.collectors._deprecated.page_parsers.generic import GenericPageParser, GenericPostParser
 
-__all__ = ["GenericPostParser", "PageParserFactory"]
-
+__all__ = ["PageParserFactory", "GenericPageParser", "GenericPostParser"]

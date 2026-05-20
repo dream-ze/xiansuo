@@ -18,22 +18,7 @@ def _is_embedded_mode() -> bool:
     return p.is_dir()
 
 
-def _is_mock_enabled() -> bool:
-    return os.getenv("ENABLE_MOCK_COLLECTOR", "false").strip().lower() in ("true", "1", "yes")
-
-
 class CollectorFactory:
-    """采集器工厂 - 根据 collector_type 严格路由
-
-    支持两种采集器类型：
-    - media_crawler：真实采集模式（基于 MediaCrawler）
-    - mock：演示采集模式（仅在 ENABLE_MOCK_COLLECTOR=true 时可用）
-
-    当设置了 MEDIA_CRAWLER_HOME 环境变量时，优先使用 EmbeddedMediaCrawlerCollector
-    （直接调用 MediaCrawler Python API，无需单独启动 HTTP 服务）。
-    否则使用 MediaCrawlerCollector（通过 HTTP bridge 调用 MediaCrawler API 服务）。
-    """
-
     @staticmethod
     def create(source: Any) -> BaseCollector:
         config = getattr(source, "config", None) or {}
@@ -41,12 +26,6 @@ class CollectorFactory:
         is_valid, msg = config_obj.validate_collector_type()
         if not is_valid:
             raise ValueError(msg)
-
-        if config_obj.collector_type == "mock":
-            if not _is_mock_enabled():
-                raise ValueError("mock collector is disabled (set ENABLE_MOCK_COLLECTOR=true to enable)")
-            from app.collectors.mock_collector import MockCollector
-            return MockCollector()
 
         if config_obj.collector_type == "media_crawler":
             if _is_embedded_mode():
@@ -59,7 +38,14 @@ class CollectorFactory:
                     pass
             return MediaCrawlerCollector()
 
-        raise ValueError(f"Unsupported collector_type: {config_obj.collector_type}")
+        if config_obj.collector_type == "xhs_sdk":
+            from app.collectors.xhs_sdk.collector import XhsSdkCollector
+            return XhsSdkCollector()
+
+        raise ValueError(
+            f"Unsupported collector_type: {config_obj.collector_type}. "
+            "Supported types: media_crawler, xhs_sdk"
+        )
 
     @staticmethod
     def get_supported_collectors() -> dict[str, dict[str, Any]]:
@@ -84,24 +70,18 @@ class CollectorFactory:
                     "max_comments_per_post": 50,
                 },
             },
-        }
-
-        if _is_mock_enabled():
-            result["mock"] = {
-                "name": "演示采集器（Mock）",
-                "description": (
-                    "生成贴近助贷场景的模拟数据，用于演示和测试。"
-                    "无需启动 MediaCrawler 服务即可跑通完整链路。"
-                    "所有数据标记 demo=true，不会与真实数据混淆。"
-                ),
+            "xhs_sdk": {
+                "name": "XHS SDK 直连采集器",
+                "description": "基于 Spider_XHS SDK，直接调用小红书 API 进行采集，支持关键词搜索、笔记详情、评论采集。",
                 "status": "ready",
-                "mode": "demo",
-                "supports": ["keyword", "competitor_account", "manual_post", "hot_post_rule"],
+                "mode": "sdk",
+                "supports": ["keyword", "manual_post"],
                 "config": {
-                    "collector_type": "mock",
-                    "max_posts": 10,
-                    "max_comments_per_post": 30,
+                    "collector_type": "xhs_sdk",
+                    "enable_comments": True,
+                    "max_posts": 20,
+                    "max_comments_per_post": 50,
                 },
-            }
-
+            },
+        }
         return result

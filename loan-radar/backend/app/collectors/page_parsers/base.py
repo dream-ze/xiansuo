@@ -1,17 +1,3 @@
-from abc import ABC, abstractmethod
-from typing import Any
+from app.collectors._deprecated.page_parsers.base import BasePageParser
 
-from app.collectors.base import CollectorResult
-
-
-class BasePageParser(ABC):
-    @abstractmethod
-    async def parse(
-        self,
-        page: Any,
-        source_url: str,
-        platform: str,
-        browser_channel: str,
-    ) -> CollectorResult:
-        raise NotImplementedError
-
+__all__ = ["BasePageParser"]

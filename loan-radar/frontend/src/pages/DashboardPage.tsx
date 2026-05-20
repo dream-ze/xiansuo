@@ -1,17 +1,36 @@
+import {
+  CheckCircleOutlined,
+  CloudDownloadOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  FileSearchOutlined,
+  PlayCircleOutlined,
+  RadarChartOutlined,
+  RiseOutlined,
+  StarOutlined,
+  SyncOutlined,
+  TeamOutlined,
+  WarningOutlined,
+  BookOutlined,
+  RocketOutlined,
+} from "@ant-design/icons";
+import { Button, Card, Col, Row, Space, Spin, Tag, Typography, message } from "antd";
+import dayjs from "dayjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
-  type DashboardStats,
-  type MediaCrawlerHealth,
-  type QueueStatus,
+  exportLeadsCsv,
+  generateDailyReport,
   getDashboardStats,
   getMediaCrawlerHealth,
   getQueueStatus,
-  generateDailyReport,
-  exportLeadsCsv,
-} from "../api/client";
-import { showToast } from "../components/ToastContainer";
+  type DashboardStats,
+  type MediaCrawlerHealth,
+  type QueueStatus,
+} from "../api";
+
+const { Title, Text, Paragraph } = Typography;
 
 const PLATFORM_LABELS: Record<string, string> = {
   xhs: "小红书",
@@ -20,60 +39,100 @@ const PLATFORM_LABELS: Record<string, string> = {
   all: "全平台",
 };
 
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  pending: { label: "排队中", color: "warning" },
+  running: { label: "运行中", color: "processing" },
+  success: { label: "成功", color: "success" },
+  failed: { label: "失败", color: "error" },
+  retrying: { label: "重试中", color: "warning" },
+};
+
+const RISK_CONFIG: Record<string, { bg: string; border: string; color: string }> = {
+  A: { bg: "#FFF1F0", border: "#FFCCC7", color: "#CF1322" },
+  B: { bg: "#E6F7FF", border: "#91D5FF", color: "#0958D9" },
+  C: { bg: "#FFFBE6", border: "#FFE58F", color: "#D48806" },
+  D: { bg: "#F5F5F5", border: "#D9D9D9", color: "#8C8C8C" },
+};
+
 function formatTimeAgo(value: string | null | undefined) {
   if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  const diff = Date.now() - d.getTime();
+  const diff = Date.now() - new Date(value).getTime();
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return "刚刚";
   if (minutes < 60) return `${minutes}分钟前`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}小时前`;
-  const days = Math.floor(hours / 24);
-  return `${days}天前`;
-}
-
-function statusLabel(status: string) {
-  const m: Record<string, string> = {
-    pending: "排队中",
-    running: "运行中",
-    success: "成功",
-    failed: "失败",
-    retrying: "重试中",
-  };
-  return m[status] ?? status;
-}
-
-function statusPillClass(status: string) {
-  return `status-pill status-${status}`;
-}
-
-function VsYesterday({ today, yesterday }: { today: number; yesterday: number }) {
-  if (yesterday === 0 && today === 0) return <span className="cockpit-vs-neutral">-</span>;
-  if (yesterday === 0) return <span className="cockpit-vs-up">↑ 新增</span>;
-  const diff = today - yesterday;
-  const pct = Math.round((diff / yesterday) * 100);
-  if (diff > 0) return <span className="cockpit-vs-up">↑ +{pct}%</span>;
-  if (diff < 0) return <span className="cockpit-vs-down">↓ {pct}%</span>;
-  return <span className="cockpit-vs-neutral">→ 持平</span>;
+  return `${Math.floor(hours / 24)}天前`;
 }
 
 type DataMode = "today" | "total";
+
+function StatCard({ title, value, suffix, icon, accent, onClick }: {
+  title: string; value: number | undefined; suffix?: string; icon?: React.ReactNode; accent?: string; onClick?: () => void;
+}) {
+  return (
+    <Card
+      hoverable={!!onClick}
+      onClick={onClick}
+      bodyStyle={{ padding: "16px 20px" }}
+      style={{
+        borderRadius: 8,
+        border: accent ? `1px solid ${accent}33` : "1px solid #F0F0F0",
+        background: accent ? `${accent}08` : "#fff",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 12, color: "#8C8C8C", marginBottom: 8 }}>{title}</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: accent || "#1F1F1F", lineHeight: 1.2 }}>
+            {value ?? "-"}
+            {suffix && <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 2 }}>{suffix}</span>}
+          </div>
+        </div>
+        {icon && (
+          <div style={{
+            width: 40, height: 40, borderRadius: 8,
+            background: accent ? `${accent}15` : "#F5F7FA",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: accent || "#8C8C8C", fontSize: 18,
+          }}>
+            {icon}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function RiskBadge({ level }: { level: string }) {
+  const cfg = RISK_CONFIG[level] || RISK_CONFIG.D;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: 28, height: 20, borderRadius: 4,
+      background: cfg.bg, border: `1px solid ${cfg.border}`,
+      fontSize: 12, fontWeight: 700, color: cfg.color,
+    }}>
+      {level}
+    </span>
+  );
+}
+
+function TaskStatusBadge({ status }: { status: string }) {
+  const info = STATUS_MAP[status] || { label: status, color: "default" };
+  return <Tag color={info.color} style={{ margin: 0, fontSize: 12 }}>{info.label}</Tag>;
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [mcHealth, setMcHealth] = useState<MediaCrawlerHealth | null>(null);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [dataMode, setDataMode] = useState<DataMode>("today");
   const [generatingReport, setGeneratingReport] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
-  const [dataMode, setDataMode] = useState<DataMode>("today");
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const navigate = useNavigate();
-
-  const notifiedStatusRef = useRef<Map<number, string>>(new Map());
+  const notifiedRef = useRef<Map<number, string>>(new Map());
 
   const loadAll = useCallback(async () => {
     try {
@@ -85,9 +144,8 @@ export default function DashboardPage() {
       setStats(dashboardData);
       setMcHealth(healthData);
       setQueueStatus(queueData);
-      setLastRefresh(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载数据失败");
+    } catch {
+      message.error("加载数据失败");
     } finally {
       setLoading(false);
     }
@@ -103,22 +161,18 @@ export default function DashboardPage() {
         try {
           const data = await getDashboardStats();
           setStats(data);
-          setLastRefresh(new Date());
-
-          const notified = notifiedStatusRef.current;
+          const notified = notifiedRef.current;
           for (const task of data.recent_tasks) {
-            const prevStatus = notified.get(task.id);
-            if (prevStatus === task.status) continue;
-            if (prevStatus != null) {
+            const prev = notified.get(task.id);
+            if (prev && prev !== task.status) {
               if (task.status === "success") {
-                showToast("success", `任务 #${task.id} 采集完成`, `获得 ${task.post_count} 帖子、${task.lead_count} 线索`);
+                message.success(`任务 #${task.id} 采集完成：${task.post_count} 帖子、${task.lead_count} 线索`);
               } else if (task.status === "failed") {
-                showToast("error", `任务 #${task.id} 采集失败`, task.error_message?.slice(0, 100) || "未知错误");
+                message.error(`任务 #${task.id} 采集失败`);
               }
             }
             notified.set(task.id, task.status);
           }
-
           const q = await getQueueStatus().catch(() => null);
           if (q) setQueueStatus(q);
         } catch {}
@@ -131,9 +185,9 @@ export default function DashboardPage() {
     setGeneratingReport(true);
     try {
       await generateDailyReport();
-      showToast("success", "报告已生成", "今日获客报告已生成，可前往日报页面查看");
+      message.success("今日获客报告已生成，可前往日报页面查看");
     } catch (err) {
-      showToast("error", "生成失败", err instanceof Error ? err.message : "未知错误");
+      message.error(err instanceof Error ? err.message : "生成失败");
     } finally {
       setGeneratingReport(false);
     }
@@ -146,21 +200,20 @@ export default function DashboardPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `loan-radar-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `loan-radar-leads-${dayjs().format("YYYY-MM-DD")}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showToast("success", "导出成功", "线索 CSV 已下载");
+      message.success("线索 CSV 已下载");
     } catch (err) {
-      showToast("error", "导出失败", err instanceof Error ? err.message : "未知错误");
+      message.error(err instanceof Error ? err.message : "导出失败");
     } finally {
       setExportingCsv(false);
     }
   }
 
   const mcIsDown = mcHealth && mcHealth.status !== "healthy";
-
   const isSystemEmpty = stats && stats.total_lead_count === 0 && stats.total_post_count === 0 && stats.total_comment_count === 0 && stats.total_task_count === 0;
 
   const displayTaskCount = dataMode === "today" ? stats?.today_task_count : stats?.total_task_count;
@@ -169,272 +222,298 @@ export default function DashboardPage() {
   const displayLeadCount = dataMode === "today" ? stats?.today_lead_count : stats?.total_lead_count;
   const displayALeadCount = dataMode === "today" ? stats?.today_a_lead_count : stats?.total_a_lead_count;
 
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: 120 }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   return (
-    <main className="page-shell">
-      <header className="page-header">
+    <div style={{ maxWidth: 1360, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
-          <p className="page-eyebrow">Customer Acquisition Cockpit</p>
-          <h1>获客驾驶舱</h1>
-          <p className="page-description">实时掌握获客数据，快速驱动业务动作。</p>
+          <div style={{ fontSize: 18, fontWeight: 600, color: "#1F1F1F" }}>获客驾驶舱</div>
+          <div style={{ fontSize: 13, color: "#8C8C8C", marginTop: 2 }}>实时掌握获客数据，快速驱动业务动作</div>
         </div>
-        <div className="cockpit-header-actions">
-          <div className="cockpit-mode-toggle">
-            <button
-              type="button"
-              className={dataMode === "today" ? "cockpit-mode-btn active" : "cockpit-mode-btn"}
-              onClick={() => setDataMode("today")}
-            >
-              今日
-            </button>
-            <button
-              type="button"
-              className={dataMode === "total" ? "cockpit-mode-btn active" : "cockpit-mode-btn"}
-              onClick={() => setDataMode("total")}
-            >
-              累计
-            </button>
-          </div>
-          {lastRefresh && (
-            <span className="cockpit-refresh-info">
-              更新于 {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-              <button type="button" className="cockpit-refresh-btn" onClick={() => void loadAll()} title="刷新">↻</button>
-            </span>
-          )}
-        </div>
-      </header>
+        <Space size={8}>
+          <Button.Group size="small">
+            <Button type={dataMode === "today" ? "primary" : "default"} onClick={() => setDataMode("today")}>今日</Button>
+            <Button type={dataMode === "total" ? "primary" : "default"} onClick={() => setDataMode("total")}>累计</Button>
+          </Button.Group>
+        </Space>
+      </div>
 
       {mcIsDown && (
-        <div className="cockpit-alert cockpit-alert-warning">
-          <span className="cockpit-alert-icon">⚠️</span>
-          <div>
-            <strong>MediaCrawler 未连接</strong>
-            <p>当前采集引擎{mcHealth.mode === "embedded" ? "（内嵌模式）" : "（HTTP 桥接模式）"}不可用，实时采集功能受限。请检查服务状态或使用演示模式。</p>
-          </div>
-          <Link to="/collection" className="btn btn-secondary" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>检查配置</Link>
-        </div>
+        <Card style={{ marginBottom: 16, borderRadius: 8, border: "1px solid #FFE58F" }} bodyStyle={{ padding: "12px 20px" }}>
+          <Space>
+            <WarningOutlined style={{ color: "#FAAD14", fontSize: 18 }} />
+            <div>
+              <Text strong style={{ fontSize: 13 }}>MediaCrawler 未连接</Text>
+              <Text type="secondary" style={{ fontSize: 12, display: "block" }}>采集引擎不可用，实时采集功能受限</Text>
+            </div>
+            <Link to="/collection"><Button size="small">检查配置</Button></Link>
+          </Space>
+        </Card>
       )}
 
       {queueStatus && (
-        <div className="queue-status-bar">
-          <span className={`queue-status-dot${queueStatus.active_task_id ? "" : " idle"}`} />
-          <span>
-            {queueStatus.active_task_id
-              ? `正在执行任务 #${queueStatus.active_task_id}`
-              : "采集队列空闲"}
-          </span>
-          {queueStatus.queue_size > 0 && (
-            <span>· 排队中 {queueStatus.queue_size} 个任务</span>
-          )}
-        </div>
+        <Card style={{ marginBottom: 16, borderRadius: 8 }} bodyStyle={{ padding: "10px 20px" }}>
+          <Space size={12}>
+            {queueStatus.active_task_id ? (
+              <>
+                <Tag color="processing" style={{ margin: 0 }}>运行中</Tag>
+                <Text style={{ fontSize: 13 }}>正在执行任务 #{queueStatus.active_task_id}</Text>
+                <SyncOutlined spin style={{ color: "#2F54EB", fontSize: 12 }} />
+              </>
+            ) : (
+              <>
+                <Tag style={{ margin: 0 }}>空闲</Tag>
+                <Text type="secondary" style={{ fontSize: 13 }}>采集队列空闲</Text>
+              </>
+            )}
+            {queueStatus.queue_size > 0 && <Text type="secondary" style={{ fontSize: 12 }}>· 排队 {queueStatus.queue_size} 个</Text>}
+          </Space>
+        </Card>
       )}
 
-      {loading && (
-        <section className="cockpit-metrics">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="cockpit-metric-card">
-              <div className="skeleton skeleton-text" style={{ width: "50%" }} />
-              <div className="skeleton skeleton-title" style={{ width: "40%" }} />
-            </div>
-          ))}
-        </section>
-      )}
-
-      {error && (
-        <div className="state-panel state-error">
-          <p>{error}</p>
-          <button className="btn btn-secondary" onClick={() => { setError(null); setLoading(true); void loadAll(); }} style={{ marginLeft: "auto" }}>重试</button>
-        </div>
-      )}
-
-      {!loading && stats && (
+      {stats && (
         <>
-          <section className="cockpit-metrics">
-            <div className="cockpit-metric-card">
-              <span className="cockpit-metric-label">监控源</span>
-              <strong className="cockpit-metric-value">{stats.source_count}</strong>
-              <span className="cockpit-metric-unit">个</span>
-            </div>
-            <div className="cockpit-metric-card">
-              <span className="cockpit-metric-label">采集任务</span>
-              <strong className="cockpit-metric-value">{displayTaskCount}</strong>
-              <span className="cockpit-metric-unit">个</span>
-            </div>
-            <div className="cockpit-metric-card">
-              <span className="cockpit-metric-label">帖子</span>
-              <strong className="cockpit-metric-value">{displayPostCount}</strong>
-              <span className="cockpit-metric-unit">条</span>
-              {dataMode === "today" && <VsYesterday today={stats.today_post_count} yesterday={stats.yesterday_post_count} />}
-            </div>
-            <div className="cockpit-metric-card">
-              <span className="cockpit-metric-label">评论</span>
-              <strong className="cockpit-metric-value">{displayCommentCount}</strong>
-              <span className="cockpit-metric-unit">条</span>
-            </div>
-            <div className="cockpit-metric-card">
-              <span className="cockpit-metric-label">线索</span>
-              <strong className="cockpit-metric-value">{displayLeadCount}</strong>
-              <span className="cockpit-metric-unit">条</span>
-              {dataMode === "today" && <VsYesterday today={stats.today_lead_count} yesterday={stats.yesterday_lead_count} />}
-            </div>
-            <div className="cockpit-metric-card cockpit-metric-highlight">
-              <span className="cockpit-metric-label">A级线索</span>
-              <strong className="cockpit-metric-value">{displayALeadCount}</strong>
-              <span className="cockpit-metric-unit">条</span>
-              {dataMode === "today" && <VsYesterday today={stats.today_a_lead_count} yesterday={stats.yesterday_a_lead_count} />}
-            </div>
-            <div className="cockpit-metric-card cockpit-metric-warning">
-              <span className="cockpit-metric-label">待审核同行</span>
-              <strong className="cockpit-metric-value">{stats.pending_competitor_count}</strong>
-              <span className="cockpit-metric-unit">个</span>
-            </div>
-          </section>
+          <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard title="监控源" value={stats.source_count} suffix="个" icon={<RadarChartOutlined />} />
+            </Col>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard title="采集任务" value={displayTaskCount} suffix="个" icon={<PlayCircleOutlined />} />
+            </Col>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard title="帖子" value={displayPostCount} suffix="条" icon={<FileSearchOutlined />} />
+            </Col>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard title="评论" value={displayCommentCount} suffix="条" />
+            </Col>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard title="线索" value={displayLeadCount} suffix="条" icon={<StarOutlined />} accent="#2F54EB" />
+            </Col>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard title="A级线索" value={displayALeadCount} suffix="条" icon={<ExclamationCircleOutlined />} accent="#CF1322" onClick={() => navigate("/leads?lead_level=A")} />
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={6}>
+              <StatCard title="今日转入CRM" value={stats.crm_today_new} suffix="个" icon={<TeamOutlined />} accent="#2F54EB" />
+            </Col>
+            <Col xs={12} sm={6}>
+              <StatCard title="今日待跟进" value={stats.crm_pending_follow} suffix="个" icon={<ClockCircleOutlined />} />
+            </Col>
+            <Col xs={12} sm={6}>
+              <StatCard
+                title="逾期未跟进"
+                value={stats.crm_overdue_follow}
+                suffix="个"
+                icon={<WarningOutlined />}
+                accent={stats.crm_overdue_follow > 0 ? "#CF1322" : undefined}
+              />
+            </Col>
+            <Col xs={12} sm={6}>
+              <StatCard title="已成交客户" value={stats.crm_converted} suffix="个" icon={<CheckCircleOutlined />} accent="#52C41A" />
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={6}>
+              <Link to="/xhs" style={{ textDecoration: "none" }}>
+                <StatCard title="XHS 内容库" value={stats.xhs_notes_count} suffix="篇" icon={<BookOutlined />} accent="#FF2442" />
+              </Link>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Link to="/xhs" style={{ textDecoration: "none" }}>
+                <StatCard title="今日入库笔记" value={stats.xhs_notes_today} suffix="篇" icon={<RiseOutlined />} />
+              </Link>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Link to="/xhs/dashboard" style={{ textDecoration: "none" }}>
+                <StatCard title="XHS 运营台" value={undefined} suffix="" icon={<RocketOutlined />} accent="#FF2442" />
+              </Link>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Link to="/xhs/crawler" style={{ textDecoration: "none" }}>
+                <StatCard title="XHS 高级采集" value={undefined} suffix="" icon={<PlayCircleOutlined />} />
+              </Link>
+            </Col>
+          </Row>
 
           {isSystemEmpty && (
-            <div className="cockpit-empty-guide">
-              <div className="cockpit-empty-icon">📡</div>
-              <h3>尚未开始采集</h3>
-              <p>系统暂无数据。创建监控源并启动采集，系统将自动识别线索。</p>
-              <div className="cockpit-empty-actions">
-                <Link to="/collection" className="btn btn-primary">新建监控源</Link>
-                <Link to="/collection" className="btn btn-secondary">查看采集任务</Link>
-              </div>
-            </div>
+            <Card style={{ textAlign: "center", padding: 40, marginBottom: 16, borderRadius: 8 }}>
+              <RadarChartOutlined style={{ fontSize: 48, color: "#BFBFBF", marginBottom: 16 }} />
+              <Title level={4} style={{ color: "#595959" }}>尚未开始采集</Title>
+              <Paragraph type="secondary">系统暂无数据。创建监控源并启动采集，系统将自动识别线索。</Paragraph>
+              <Space>
+                <Link to="/collection"><Button type="primary">新建监控源</Button></Link>
+                <Link to="/collection"><Button>查看采集任务</Button></Link>
+              </Space>
+            </Card>
           )}
 
-          <div className="cockpit-grid">
-            <section className="cockpit-panel">
-              <div className="cockpit-panel-header">
-                <h2>⭐ 最近A级线索</h2>
-                <Link to="/leads?lead_level=A">查看全部</Link>
-              </div>
-              {stats.recent_a_leads.length === 0 ? (
-                <div className="cockpit-panel-empty">
-                  <p>暂无A级线索</p>
-                  <span>启动采集后，高分线索将自动出现在这里</span>
-                </div>
-              ) : (
-                <div className="cockpit-lead-list">
-                  {stats.recent_a_leads.map((lead) => (
-                    <Link key={lead.id} to="/leads" className="cockpit-lead-item" style={{ textDecoration: "none", color: "inherit" }}>
-                      <div className="cockpit-lead-main">
-                        <div className="cockpit-lead-top">
-                          <span className={`platform-badge platform-${lead.platform}`}>
-                            {PLATFORM_LABELS[lead.platform] || lead.platform}
-                          </span>
-                          <span className="cockpit-lead-score">评分 {lead.lead_score}</span>
-                          {lead.demand_type && <span className="tag">{lead.demand_type}</span>}
-                        </div>
-                        <div className="cockpit-lead-user">{lead.user_name || "匿名用户"}</div>
-                        <div className="cockpit-lead-content">{lead.content}</div>
-                        {lead.follow_up_script && (
-                          <div className="cockpit-lead-script">
-                            💬 {lead.follow_up_script.slice(0, 60)}{lead.follow_up_script.length > 60 ? "..." : ""}
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={24} lg={12}>
+              <Card
+                title={<span style={{ fontSize: 14, fontWeight: 600 }}>最近A级线索</span>}
+                extra={<Link to="/leads?lead_level=A" style={{ fontSize: 12 }}>查看全部</Link>}
+                style={{ borderRadius: 8 }}
+                bodyStyle={{ padding: "12px 20px" }}
+              >
+                {stats.recent_a_leads.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: "#BFBFBF", fontSize: 13 }}>
+                    暂无A级线索，启动采集后高分线索将自动出现
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {stats.recent_a_leads.map((lead) => (
+                      <Link key={lead.id} to="/leads" style={{ textDecoration: "none", color: "inherit" }}>
+                        <div style={{
+                          padding: "10px 12px", borderRadius: 6, background: "#FAFAFA",
+                          border: "1px solid #F0F0F0", transition: "border-color 0.15s",
+                        }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2F54EB"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#F0F0F0"; }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <Space size={6} style={{ marginBottom: 4 }}>
+                                <RiskBadge level={lead.lead_level} />
+                                <Tag style={{ margin: 0, fontSize: 11 }}>{PLATFORM_LABELS[lead.platform] || lead.platform}</Tag>
+                                <Text type="secondary" style={{ fontSize: 12 }}>评分 {lead.lead_score}</Text>
+                                {lead.demand_type && <Tag color="purple" style={{ margin: 0, fontSize: 11 }}>{lead.demand_type}</Tag>}
+                              </Space>
+                              <div><Text strong style={{ fontSize: 13 }}>{lead.user_name || "匿名用户"}</Text></div>
+                              <Paragraph ellipsis={{ rows: 1 }} style={{ margin: "2px 0 0", color: "#595959", fontSize: 12 }}>
+                                {lead.content}
+                              </Paragraph>
+                            </div>
+                            <Text type="secondary" style={{ fontSize: 11, flexShrink: 0, marginLeft: 8 }}>
+                              {formatTimeAgo(lead.created_at)}
+                            </Text>
                           </div>
-                        )}
-                      </div>
-                      <span className="cockpit-lead-time">{formatTimeAgo(lead.created_at)}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </section>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </Col>
 
-            <section className="cockpit-panel">
-              <div className="cockpit-panel-header">
-                <h2>⚙️ 采集任务状态</h2>
-                <Link to="/collection">查看全部</Link>
-              </div>
-              {stats.recent_tasks.length === 0 ? (
-                <div className="cockpit-panel-empty">
-                  <p>暂无采集任务</p>
-                  <span>创建监控源并启动采集</span>
-                </div>
-              ) : (
-                <div className="cockpit-task-list">
-                  {stats.recent_tasks.map((task) => (
-                    <Link key={task.id} to="/collection" className="cockpit-task-item" style={{ textDecoration: "none", color: "inherit" }}>
-                      <div className="cockpit-task-info">
-                        <span className="cockpit-task-label">
-                          #{task.id} · {PLATFORM_LABELS[task.platform] || task.platform} · {task.source_type}
-                        </span>
-                        <span className="cockpit-task-meta">
-                          {task.source_value?.slice(0, 30) || "-"}
-                          {task.started_at ? ` · ${formatTimeAgo(task.started_at)}` : ""}
-                        </span>
-                      </div>
-                      <div className="cockpit-task-right">
-                        {task.status === "success" && (
-                          <span className="cockpit-task-counts">
-                            {task.post_count}帖 {task.comment_count}评 {task.lead_count}线索
-                          </span>
-                        )}
-                        <span className={statusPillClass(task.status)}>
-                          {statusLabel(task.status)}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+            <Col xs={24} lg={12}>
+              <Card
+                title={<span style={{ fontSize: 14, fontWeight: 600 }}>采集任务状态</span>}
+                extra={<Link to="/collection" style={{ fontSize: 12 }}>查看全部</Link>}
+                style={{ borderRadius: 8 }}
+                bodyStyle={{ padding: "12px 20px" }}
+              >
+                {stats.recent_tasks.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: "#BFBFBF", fontSize: 13 }}>
+                    暂无采集任务
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {stats.recent_tasks.map((task) => (
+                      <Link key={task.id} to="/collection" style={{ textDecoration: "none", color: "inherit" }}>
+                        <div style={{
+                          padding: "10px 12px", borderRadius: 6, background: "#FAFAFA",
+                          border: "1px solid #F0F0F0", transition: "border-color 0.15s",
+                        }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2F54EB"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#F0F0F0"; }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <Space size={6}>
+                                <Text strong style={{ fontSize: 13 }}>#{task.id}</Text>
+                                <Tag style={{ margin: 0, fontSize: 11 }}>{PLATFORM_LABELS[task.platform] || task.platform}</Tag>
+                                <Text type="secondary" style={{ fontSize: 12 }}>{task.source_type}</Text>
+                              </Space>
+                              <div style={{ marginTop: 2 }}>
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  {task.source_value?.slice(0, 30) || "-"}
+                                  {task.started_at ? ` · ${formatTimeAgo(task.started_at)}` : ""}
+                                </Text>
+                              </div>
+                            </div>
+                            <Space size={8}>
+                              {task.status === "success" && (
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  {task.post_count}帖 {task.comment_count}评 {task.lead_count}线索
+                                </Text>
+                              )}
+                              <TaskStatusBadge status={task.status} />
+                            </Space>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </Col>
+          </Row>
 
-          <section className="cockpit-panel" style={{ marginTop: 20 }}>
-            <div className="cockpit-panel-header">
-              <h2>🚀 快捷操作</h2>
-            </div>
-            <div className="cockpit-actions">
-              <button className="cockpit-action-btn" onClick={() => navigate("/collection")}>
-                <span className="cockpit-action-icon">📡</span>
-                <div>
-                  <strong>新建监控源</strong>
-                  <span>配置关键词或账号监控</span>
-                </div>
-              </button>
-              <button className="cockpit-action-btn" onClick={() => navigate("/collection")}>
-                <span className="cockpit-action-icon">▶️</span>
-                <div>
-                  <strong>立即采集</strong>
-                  <span>启动采集任务获取数据</span>
-                </div>
-              </button>
-              <button className="cockpit-action-btn" onClick={() => navigate("/leads")}>
-                <span className="cockpit-action-icon">⭐</span>
-                <div>
-                  <strong>查看线索池</strong>
-                  <span>浏览和管理所有线索</span>
-                </div>
-              </button>
-              <button className="cockpit-action-btn" onClick={handleGenerateReport} disabled={generatingReport}>
-                <span className="cockpit-action-icon">📊</span>
-                <div>
-                  <strong>{generatingReport ? "生成中..." : "生成今日报告"}</strong>
-                  <span>一键生成获客日报</span>
-                </div>
-              </button>
-              <button className="cockpit-action-btn" onClick={handleExportCsv} disabled={exportingCsv}>
-                <span className="cockpit-action-icon">📥</span>
-                <div>
-                  <strong>{exportingCsv ? "导出中..." : "导出线索 CSV"}</strong>
-                  <span>下载线索数据表格</span>
-                </div>
-              </button>
-            </div>
-          </section>
+          <Card
+            title={<span style={{ fontSize: 14, fontWeight: 600 }}>快捷操作</span>}
+            style={{ borderRadius: 8 }}
+            bodyStyle={{ padding: "16px 20px" }}
+          >
+            <Row gutter={[12, 12]}>
+              {[
+                { icon: <RadarChartOutlined />, title: "新建监控源", desc: "配置关键词或账号监控", action: () => navigate("/collection") },
+                { icon: <PlayCircleOutlined />, title: "立即采集", desc: "启动采集任务获取数据", action: () => navigate("/collection") },
+                { icon: <StarOutlined />, title: "查看线索池", desc: "浏览和管理所有线索", action: () => navigate("/leads") },
+                { icon: <TeamOutlined />, title: "CRM 跟进", desc: "管理客户跟进状态", action: () => navigate("/crm") },
+                { icon: <FileSearchOutlined />, title: generatingReport ? "生成中..." : "生成今日报告", desc: "一键生成获客日报", action: handleGenerateReport, loading: generatingReport },
+                { icon: <CloudDownloadOutlined />, title: exportingCsv ? "导出中..." : "导出线索 CSV", desc: "下载线索数据表格", action: handleExportCsv, loading: exportingCsv },
+              ].map((item, i) => (
+                <Col xs={12} sm={8} md={4} key={i}>
+                  <div
+                    onClick={item.action}
+                    style={{
+                      padding: "14px 16px", borderRadius: 8, cursor: "pointer",
+                      border: "1px solid #F0F0F0", background: "#fff",
+                      transition: "all 0.15s", textAlign: "center",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#2F54EB";
+                      e.currentTarget.style.background = "#F5F7FA";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#F0F0F0";
+                      e.currentTarget.style.background = "#fff";
+                    }}
+                  >
+                    <div style={{ fontSize: 22, color: "#2F54EB", marginBottom: 6 }}>{item.icon}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#1F1F1F" }}>{item.title}</div>
+                    <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 2 }}>{item.desc}</div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          </Card>
 
           {mcHealth && mcHealth.status === "healthy" && (
-            <div className="cockpit-health-bar">
-              <span className="cockpit-health-dot" />
-              <span>MediaCrawler 正常运行 · {mcHealth.mode === "embedded" ? "内嵌模式" : "HTTP 桥接模式"}</span>
-              {mcHealth.supported_platforms.length > 0 && (
-                <span className="cockpit-health-platforms">
-                  · 支持 {mcHealth.supported_platforms.map((p) => p.label).join("、")}
-                </span>
-              )}
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <Space size={6}>
+                <CheckCircleOutlined style={{ color: "#52C41A", fontSize: 12 }} />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  MediaCrawler 正常运行 · {mcHealth.mode === "embedded" ? "内嵌模式" : "HTTP 桥接模式"}
+                  {mcHealth.supported_platforms.length > 0 && (
+                    <> · 支持 {mcHealth.supported_platforms.map((p) => p.label).join("、")}</>
+                  )}
+                </Text>
+              </Space>
             </div>
           )}
         </>
       )}
-    </main>
+    </div>
   );
 }

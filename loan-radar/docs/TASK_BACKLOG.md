@@ -15,7 +15,7 @@
 - [x] 前端基础页面：监控源、采集任务、帖子池、评论池、线索池、今日报告
 - [x] MediaCrawler 多平台采集器（替代 Mock/Playwright/ExternalApi/GenericWeb）
 - [x] 采集任务创建与运行接口（/api/collection/tasks）
-- [x] 帖子/评论去重（platform + post_id / comment_id）
+- [x] 帖子/评论去重（platform + post_id / comment_id 唯一约束）
 - [x] 采集后更新 monitor_sources.last_crawled_at
 - [x] 错误信息脱敏
 - [x] 线索追踪到帖子双向导航
@@ -41,19 +41,48 @@
 - [x] 数据库迁移：leads.notes + daily_reports 新增字段
 - [x] PRD/DEMO_FLOW/TASK_BACKLOG/README 更新
 
-## P2 下一步：稳定性与清理
+## P2 已完成：CRM 与采集增强
+
+- [x] 轻 CRM 跟进台后端（crm_customers / crm_follow_records 模型、API）
+- [x] CRM 仪表板（统计概览、跟进提醒：已逾期/今日/明日/本周）
+- [x] 线索转客户（两种入口：CRM 页面 / 线索页面）
+- [x] 手动录入客户
+- [x] 客户状态管理（7 种状态：pending/contacted/interested/wechat_added/applied/converted/invalid）
+- [x] 跟进记录管理（5 种跟进类型：phone/wechat/message/visit/other）
+- [x] 跟进时间提醒（前端按 overdue/today/tomorrow/this_week/none 过滤）
+- [x] CRM 前端页面（CrmFollowUpPage.tsx）
+- [x] 采集时间范围过滤（config.time_range: 7d/15d/30d/90d）
+- [x] 设置 time_range 时自动提升 max_posts 至 80
+- [x] 入库前按 publish_time 过滤帖子和评论
+- [x] 前端 CollectionPage 新增时间范围选择器和列表列
+- [x] 定时采集调度（Cron 表达式配置，APScheduler）
+- [x] 评分规则管理（可视化编辑、单条/批量测试、热重载）
+- [x] 仪表板（全局统计概览、今日/昨日对比、CRM 跟进提醒、MediaCrawler 健康状态）
+- [x] 采集任务队列管理（CrawlTaskQueue，同一时间仅执行一个任务）
+- [x] 失败类型分类（8 种 FailureType，前端展示中文标签和处理建议）
+- [x] 线索转 CRM 接口（POST /api/leads/{lead_id}/convert-to-crm）
+- [x] 线索新增 crm_customer_id / converted_to_crm_at 字段
+- [x] 线索列表新增 converted_to_crm / created_after 查询参数
+- [x] 日报新增 a_lead_details / typical_evidence / discovered_competitors / tomorrow_suggestions / crm_stats 字段
+- [x] 日报 Markdown 导出（GET /api/daily-reports/today/export）
+- [x] 数据库迁移：crm_customers / crm_follow_records / leads CRM 字段 / daily_reports 新增字段
+
+## P3 下一步：稳定性与清理
 
 - [ ] 评估旧采集器代码（MockCollector/PlaywrightCollector/ExternalApiCollector/GenericWebCollector）是否删除或归档
-- [ ] 删除 HomePage.tsx 死代码
-- [ ] 归档历史文档（PHASE3/4/5_ACCEPTANCE、REAL_COLLECTION_PLAN 等）
+- [x] 删除 HomePage.tsx 死代码（已不存在，路由已改为 DashboardPage）
+- [x] 归档历史文档（PHASE3/4/5_ACCEPTANCE、REAL_COLLECTION_PLAN 等已移至 docs/archive/）
 - [ ] 增加真实采集测试页面或本地 HTML fixture
 - [ ] smoke_test 新增 pending competitors 审核步骤
 - [ ] CODEX_TASK_RULES.md 审核并更新过时规则
 - [ ] 线索详情弹窗展示完整证据链（命中关键词、金额、判断理由）
 - [ ] 线索批量操作（批量标记状态、批量导出）
 - [ ] 日报 PDF 导出
+- [ ] CRM 客户详情页完善（来源帖子、来源线索关联展示）
+- [ ] CRM 跟进提醒通知增强（站内通知、邮件提醒）
+- [ ] 前端导航优化：帖子池/评论池/评分规则从线索池子路由提升为独立菜单项
 
-## P3 后续：扩展能力
+## P4 后续：扩展能力
 
 - [ ] 恢复 MockCollector 到 Factory 路由（保证无 MediaCrawler 服务时演示可跑）
 - [ ] 扩展 MediaCrawler 支持更多平台（快手、B站、微博、贴吧）
@@ -62,14 +91,12 @@
 - [ ] 支持 `endpoint`、`api_key_env`、`timeout`、`retry`
 - [ ] 前端支持 external_api 配置
 - [ ] 测试 API Key 不泄漏
-- [ ] 定时采集调度
 - [ ] 异步采集队列
-- [ ] 线索自动分配和跟进提醒
+- [ ] 线索自动分配和跟进提醒增强
 - [ ] 多租户和基础权限
 
 ## 暂缓
 
-- [ ] CRM
 - [ ] 员工管理
 - [ ] 复杂权限
 - [ ] 自动发布

@@ -51,8 +51,15 @@ services:
       DATABASE_URL: postgresql+psycopg2://loan_radar:loan_radar_password@postgres:5432/loan_radar
       MEDIA_CRAWLER_API_URL: http://mediacrawler:8080
       MEDIA_CRAWLER_RAW_DB_PATH: /shared/mediacrawler/raw_tasks.sqlite3
+      SECRET_KEY: change-me-in-production-with-a-strong-random-key-at-least-32-chars
+      SCHEDULER_ENABLED: "true"
+      SCHEDULER_INTERVAL_SECONDS: 60
+      FRONTEND_SERVE_STATIC: "true"
+      FRONTEND_BUILD_DIR: ./frontend/dist
+      CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:8001
     volumes:
       - mediacrawler_data:/shared/mediacrawler:ro
+      - backend_storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,3 +79,4 @@ services:
 volumes:
   postgres_data:
   mediacrawler_data:
+  backend_storage:

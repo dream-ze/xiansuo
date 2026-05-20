@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from app.api.routes.monitor_sources import get_db
 from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
+from app.models.crm import CrmCustomer
 from app.models.lead import Lead
 from app.models.monitor_source import MonitorSource
+from app.models.note import Note
 from app.models.pending_competitor import PendingCompetitorAccount
 from app.models.post import Post
 from app.utils.response import success_response
@@ -65,6 +67,27 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     pending_competitor_count = db.query(func.count(PendingCompetitorAccount.id)).filter(
         PendingCompetitorAccount.status == "pending",
+    ).scalar() or 0
+
+    crm_today_new = db.query(func.count(CrmCustomer.id)).filter(
+        func.date(CrmCustomer.created_at) == today,
+    ).scalar() or 0
+    crm_pending_follow = db.query(func.count(CrmCustomer.id)).filter(
+        CrmCustomer.status == "pending",
+    ).scalar() or 0
+    crm_overdue_follow = db.query(func.count(CrmCustomer.id)).filter(
+        CrmCustomer.next_follow_up_at.isnot(None),
+        CrmCustomer.next_follow_up_at < datetime.now(timezone.utc),
+        CrmCustomer.status.notin_(["converted", "invalid"]),
+    ).scalar() or 0
+    crm_converted = db.query(func.count(CrmCustomer.id)).filter(
+        CrmCustomer.status == "converted",
+    ).scalar() or 0
+
+    xhs_notes_count = db.query(func.count(Note.id)).scalar() or 0
+    xhs_notes_today = _count_today(db, Note, today)
+    xhs_notes_with_video = db.query(func.count(Note.id)).filter(
+        Note.note_id != None,
     ).scalar() or 0
 
     recent_a_leads = (
@@ -128,6 +151,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "yesterday_a_lead_count": yesterday_a_lead_count,
         "yesterday_post_count": yesterday_post_count,
         "pending_competitor_count": pending_competitor_count,
+        "crm_today_new": crm_today_new,
+        "crm_pending_follow": crm_pending_follow,
+        "crm_overdue_follow": crm_overdue_follow,
+        "crm_converted": crm_converted,
+        "xhs_notes_count": xhs_notes_count,
+        "xhs_notes_today": xhs_notes_today,
         "recent_a_leads": a_leads_data,
         "recent_tasks": tasks_data,
     })

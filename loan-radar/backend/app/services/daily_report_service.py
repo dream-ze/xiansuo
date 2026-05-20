@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.comment import Comment
 from app.models.crawl_task import CrawlTask
+from app.models.crm import CrmCustomer, CrmFollowRecord
 from app.models.daily_report import DailyReport
 from app.models.lead import Lead
 from app.models.monitor_source import MonitorSource
@@ -177,8 +178,8 @@ def generate_daily_report(db: Session, platform: str | None = None) -> DailyRepo
     typical_evidence = _build_typical_evidence(leads)
     discovered_competitors = _build_discovered_competitors(db, platform)
     tomorrow_suggestions = _build_tomorrow_suggestions(a_count, b_count, lead_count, top_demands, top_keywords)
+    crm_stats = _build_crm_stats(db)
 
-    # 已有同日同平台报告则更新，否则新建
     existing = (
         db.query(DailyReport)
         .filter(DailyReport.report_date == today, DailyReport.platform == platform_key)
@@ -209,6 +210,7 @@ def generate_daily_report(db: Session, platform: str | None = None) -> DailyRepo
     report.typical_evidence = typical_evidence
     report.discovered_competitors = discovered_competitors
     report.tomorrow_suggestions = tomorrow_suggestions
+    report.crm_stats = crm_stats
 
     db.commit()
     db.refresh(report)
@@ -345,3 +347,31 @@ def list_daily_reports(db: Session, platform: str | None = None) -> list[DailyRe
     if platform:
         query = query.filter(DailyReport.platform == platform)
     return query.order_by(DailyReport.report_date.desc(), DailyReport.id.desc()).all()
+
+
+def _build_crm_stats(db: Session) -> dict:
+    today = _today_utc()
+    today_new = db.query(func.count(CrmCustomer.id)).filter(
+        func.date(CrmCustomer.created_at) == today,
+    ).scalar() or 0
+    today_follow_count = db.query(func.count(CrmFollowRecord.id)).filter(
+        func.date(CrmFollowRecord.created_at) == today,
+    ).scalar() or 0
+    interested_count = db.query(func.count(CrmCustomer.id)).filter(
+        CrmCustomer.status == "interested",
+    ).scalar() or 0
+    converted_count = db.query(func.count(CrmCustomer.id)).filter(
+        CrmCustomer.status == "converted",
+    ).scalar() or 0
+    overdue_follow = db.query(func.count(CrmCustomer.id)).filter(
+        CrmCustomer.next_follow_up_at.isnot(None),
+        CrmCustomer.next_follow_up_at < datetime.now(timezone.utc),
+        CrmCustomer.status.notin_(["converted", "invalid"]),
+    ).scalar() or 0
+    return {
+        "today_new_customers": today_new,
+        "today_follow_count": today_follow_count,
+        "interested_count": interested_count,
+        "converted_count": converted_count,
+        "overdue_follow_remind": overdue_follow,
+    }

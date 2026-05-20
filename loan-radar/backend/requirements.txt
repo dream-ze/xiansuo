@@ -1,4 +1,4 @@
-fastapi
+fastapi>=0.115.12
 uvicorn[standard]
 SQLAlchemy
 alembic
@@ -11,3 +11,14 @@ requests
 httpx
 PyExecJS
 APScheduler
+cryptography
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+pyyaml
+Pillow>=9.2
+aiohttp
+opencv-python
+numpy
+qrcode
+loguru

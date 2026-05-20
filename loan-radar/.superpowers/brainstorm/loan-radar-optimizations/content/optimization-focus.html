@@ -1,0 +1,67 @@
+﻿<h2>先选优化重心</h2>
+<p class="subtitle">我基于当前代码结构和待办，先把前后端优化拆成 3 条路线。请选择最想优先推进的一条。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A · 产品工作台体验</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Dashboard / 采集 / 线索 / CRM</div>
+          <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px">
+            <div class="placeholder">统一首页：今日采集、A 级线索、待跟进任务</div>
+            <div class="placeholder">右侧行动面板：一键采集、转 CRM、导出</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 前端信息架构和操作流</h3>
+      <p>重点优化导航、首页、采集页、线索页和 CRM 页面，让系统更像一个可日常使用的业务工作台。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B · 后端采集链路稳定性</div>
+        <div class="mockup-body">
+          <div style="display:flex;gap:10px;align-items:center">
+            <div class="placeholder">Source</div>
+            <div>→</div>
+            <div class="placeholder">Task Queue</div>
+            <div>→</div>
+            <div class="placeholder">Collector</div>
+            <div>→</div>
+            <div class="placeholder">Lead / CRM</div>
+          </div>
+          <div class="placeholder" style="margin-top:12px">错误分类、重试、任务状态、日志可观测</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 后端采集和数据链路</h3>
+      <p>重点优化采集任务、MediaCrawler 集成、去重、失败恢复、接口边界和可测试性。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C · 全链路产品化</div>
+        <div class="mockup-body">
+          <div class="placeholder">Demo 数据 / 健康检查 / 引导流程</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
+            <div class="placeholder">采集配置</div>
+            <div class="placeholder">线索转化</div>
+            <div class="placeholder">日报导出</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 前后端联调和可交付体验</h3>
+      <p>重点打磨从启动、配置、采集、查看线索到 CRM 转化的闭环，适合先做可演示版本。</p>
+    </div>
+  </div>
+</div>

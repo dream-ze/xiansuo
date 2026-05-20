@@ -1,12 +1,3 @@
-from app.collectors.page_parsers.base import BasePageParser
-from app.collectors.page_parsers.generic import GenericPostParser
+from app.collectors._deprecated.page_parsers.factory import PageParserFactory
 
-
-class PageParserFactory:
-    @staticmethod
-    def create(platform: str, max_comments_per_post: int = 50) -> BasePageParser:
-        return GenericPostParser(
-            platform=platform,
-            max_comments_per_post=max_comments_per_post,
-        )
-
+__all__ = ["PageParserFactory"]

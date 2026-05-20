@@ -269,17 +269,12 @@ def seed_demo_data_endpoint(db: Session = Depends(get_db)):
 
 @router.post("/demo/generate")
 def generate_demo_data_endpoint(db: Session = Depends(get_db)):
-    """一键生成演示数据 - 仅在 ENABLE_MOCK_COLLECTOR=true 时可用
+    """一键生成演示数据
 
-    创建演示监控源并立即触发采集任务，生成完整的演示链路数据：
-    帖子、评论、A/B/C/D 线索、疑似同行账号、可用于日报的数据。
+    创建演示监控源并立即触发采集任务。
+    当前仅支持 media_crawler 采集器，需确保 MediaCrawler 服务可用。
+    如需离线演示数据，请使用 POST /api/monitor-sources/demo/seed。
     """
-    mock_enabled = os.getenv("ENABLE_MOCK_COLLECTOR", "false").strip().lower() in ("true", "1", "yes")
-    if not mock_enabled:
-        return JSONResponse(
-            status_code=403,
-            content=error_response("演示模式未启用，请设置 ENABLE_MOCK_COLLECTOR=true"),
-        )
 
     from app.schemas.monitor_source import MonitorSourceCreate
     from app.models.monitor_source import MonitorSource
@@ -290,28 +285,21 @@ def generate_demo_data_endpoint(db: Session = Depends(get_db)):
             "platform": "xhs",
             "name": "演示 - 征信花了",
             "value": "征信花了",
-            "config": {"collector_type": "mock"},
+            "config": {"collector_type": "media_crawler", "max_posts": 5, "max_comments_per_post": 5},
         },
         {
             "source_type": "keyword",
             "platform": "douyin",
             "name": "演示 - 急用5万周转",
             "value": "急用5万周转",
-            "config": {"collector_type": "mock"},
+            "config": {"collector_type": "media_crawler", "max_posts": 5, "max_comments_per_post": 5},
         },
         {
             "source_type": "keyword",
             "platform": "zhihu",
             "name": "演示 - 负债高能不能做",
             "value": "负债高能不能做",
-            "config": {"collector_type": "mock"},
-        },
-        {
-            "source_type": "hot_post_rule",
-            "platform": "xhs",
-            "name": "演示 - 爆款规则",
-            "value": "有逾期怎么处理",
-            "config": {"collector_type": "mock"},
+            "config": {"collector_type": "media_crawler", "max_posts": 5, "max_comments_per_post": 5},
         },
     ]
 

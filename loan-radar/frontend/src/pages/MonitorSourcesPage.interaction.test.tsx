@@ -1,12 +1,12 @@
-﻿import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 
-import * as client from "../api/client";
+import * as client from "../api/index";
 import MonitorSourcesPage from "./MonitorSourcesPage";
 
-vi.mock("../api/client");
+vi.mock("../api/index");
 
 function renderWithRouter(component: React.ReactElement) {
   return render(<BrowserRouter>{component}</BrowserRouter>);

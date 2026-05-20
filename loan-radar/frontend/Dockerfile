@@ -1,4 +1,7 @@
-FROM node:20-alpine AS build
+ARG NODE_IMAGE=m.daocloud.io/docker.io/library/node:20-alpine
+ARG NGINX_IMAGE=m.daocloud.io/docker.io/library/nginx:alpine
+
+FROM ${NODE_IMAGE} AS build
 
 WORKDIR /app
 
@@ -8,7 +11,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+FROM ${NGINX_IMAGE}
 
 COPY --from=build /app/dist /usr/share/nginx/html
 

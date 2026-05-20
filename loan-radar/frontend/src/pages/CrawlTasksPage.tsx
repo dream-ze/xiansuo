@@ -16,7 +16,7 @@ import {
   type FailureTypesMetaResponse,
   type MonitorSource,
   type QueueStatus,
-} from "../api/client";
+} from "../api/index";
 import { showToast } from "../components/ToastContainer";
 
 type SourceType = "keyword" | "account" | "post_url";

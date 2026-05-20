@@ -14,6 +14,8 @@ from app.models.monitor_source import MonitorSource
 logger = logging.getLogger(__name__)
 
 _CHECK_INTERVAL_MINUTES = 1
+_PUBLISH_CHECK_INTERVAL_SECONDS = 60
+_COOKIE_CHECK_INTERVAL_HOURS = 2
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -87,6 +89,38 @@ def _check_and_enqueue_scheduled_sources() -> None:
         db.close()
 
 
+def _run_due_publish_jobs() -> None:
+    try:
+        from app.services.xhs_scheduler_service import run_due_publish_jobs_once
+        result = run_due_publish_jobs_once()
+        if result["executed_count"] > 0:
+            logger.info("XHS publish scheduler: %d jobs executed, %d failed", result["executed_count"], result["failed_count"])
+    except Exception:
+        logger.exception("XHS publish scheduler failed")
+
+
+def _check_account_cookies() -> None:
+    try:
+        from app.services.xhs_scheduler_service import check_all_account_cookies_once
+        check_all_account_cookies_once()
+    except Exception:
+        logger.exception("XHS cookie health check failed")
+
+
+def _notify_expired_cookies() -> None:
+    from app.services.cookie_resolution_service import check_and_notify_expired_cookies
+
+    db: Session = SessionLocal()
+    try:
+        count = check_and_notify_expired_cookies(db)
+        if count > 0:
+            logger.info("Notified %d expired cookie accounts", count)
+    except Exception:
+        logger.exception("Cookie expiration notification failed")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None and _scheduler.running:
@@ -94,6 +128,7 @@ def start_scheduler() -> None:
         return
 
     _scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
+
     _scheduler.add_job(
         _check_and_enqueue_scheduled_sources,
         trigger=IntervalTrigger(minutes=_CHECK_INTERVAL_MINUTES),
@@ -101,15 +136,46 @@ def start_scheduler() -> None:
         name="Check scheduled monitor sources",
         replace_existing=True,
     )
+
+    _scheduler.add_job(
+        _run_due_publish_jobs,
+        trigger=IntervalTrigger(seconds=_PUBLISH_CHECK_INTERVAL_SECONDS),
+        id="xhs_due_publish_runner",
+        name="XHS due publish jobs",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
+    _scheduler.add_job(
+        _check_account_cookies,
+        trigger=IntervalTrigger(hours=_COOKIE_CHECK_INTERVAL_HOURS),
+        id="xhs_cookie_health_checker",
+        name="XHS cookie health check",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
+    _scheduler.add_job(
+        _notify_expired_cookies,
+        trigger=IntervalTrigger(hours=_COOKIE_CHECK_INTERVAL_HOURS),
+        id="cookie_expiration_notifier",
+        name="Cookie expiration notification",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
     _scheduler.start()
-    logger.info("crawl scheduler started, check interval: %d min", _CHECK_INTERVAL_MINUTES)
+    logger.info("unified scheduler started (crawl check: %d min, publish check: %d sec, cookie check: %d hr)", _CHECK_INTERVAL_MINUTES, _PUBLISH_CHECK_INTERVAL_SECONDS, _COOKIE_CHECK_INTERVAL_HOURS)
 
 
 def stop_scheduler() -> None:
     global _scheduler
     if _scheduler is not None and _scheduler.running:
         _scheduler.shutdown(wait=False)
-        logger.info("crawl scheduler stopped")
+        logger.info("unified scheduler stopped")
     _scheduler = None
 
 

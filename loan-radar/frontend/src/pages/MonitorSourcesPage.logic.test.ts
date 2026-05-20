@@ -39,7 +39,7 @@ describe("MonitorSourcesPage 动态字段", () => {
 
   it("mock 字段集合仅包含 max_posts 和 max_comments_per_post", () => {
     const fields = getDynamicFieldKeysByCollectorType("mock");
-    expect(fields).toEqual(["max_posts", "max_comments_per_post"]);
+    expect(fields).toEqual(["max_posts", "max_comments_per_post", "time_range"]);
   });
 });
 

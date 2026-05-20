@@ -28,5 +28,6 @@ class DailyReportOut(BaseModel):
     typical_evidence: Any | None = None
     discovered_competitors: Any | None = None
     tomorrow_suggestions: Any | None = None
+    crm_stats: Any | None = None
     created_at: datetime
     updated_at: datetime

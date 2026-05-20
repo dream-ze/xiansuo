@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from app.api.routes.monitor_sources import get_db
 from app.models.lead import Lead
 from app.models.post import Post
-from app.schemas.crm import LeadConvertToCrmIn
+from app.schemas.crm import LeadConvertToCrmPayload
 from app.schemas.lead import LeadOut
-from app.services.crm_service import convert_lead_to_crm, customer_to_dict, opportunity_to_dict, task_to_dict
+from app.services.crm_service import convert_lead_to_crm
 from app.services.export_service import (
     VALID_LEAD_STATUSES,
     build_leads_query,
@@ -163,7 +163,7 @@ def update_lead_status_endpoint(
 @router.post("/{lead_id}/convert-to-crm")
 def convert_lead_to_crm_endpoint(
     lead_id: int,
-    payload: LeadConvertToCrmIn,
+    payload: LeadConvertToCrmPayload,
     db: Session = Depends(get_db),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -171,7 +171,7 @@ def convert_lead_to_crm_endpoint(
         return not_found_response()
 
     try:
-        customer, opportunity, task = convert_lead_to_crm(
+        customer = convert_lead_to_crm(
             db=db,
             lead=lead,
             owner_name=payload.owner_name,
@@ -180,10 +180,7 @@ def convert_lead_to_crm_endpoint(
     except ValueError as exc:
         return validation_error_response(str(exc))
 
-    return success_response(
-        {
-            "customer": customer_to_dict(customer),
-            "opportunity": opportunity_to_dict(opportunity, db),
-            "task": task_to_dict(task, db),
-        }
-    )
+    from app.schemas.crm import CrmCustomerOut
+    return success_response({
+        "customer": CrmCustomerOut.model_validate(customer).model_dump(mode="json"),
+    })

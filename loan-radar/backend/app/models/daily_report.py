@@ -27,6 +27,7 @@ class DailyReport(Base):
     typical_evidence = Column(JSON, nullable=True)
     discovered_competitors = Column(JSON, nullable=True)
     tomorrow_suggestions = Column(JSON, nullable=True)
+    crm_stats = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
