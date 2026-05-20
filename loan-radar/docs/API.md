@@ -23,6 +23,23 @@
 | CRM | `/api/crm` | `crm.py` | 仪表板、客户 CRUD、跟进记录 |
 | 仪表板 | `/api/dashboard` | `dashboard.py` | 全局统计、MediaCrawler 健康状态 |
 | 评分规则 | `/api/scoring-rules` | `scoring_rules.py` | 获取/更新/测试/批量测试/重载 |
+| 用户认证 | `/api/auth` | `auth.py` | 注册/登录/刷新 Token/登出/当前用户 |
+| 平台账号 | `/api/accounts` | `accounts.py` | 账号列表/Cookie 导入/状态检查/删除/Cookie 状态 |
+| 登录会话 | `/api/xhs/login-sessions` | `login_sessions.py` | QR 码登录/手机验证码登录/会话确认 |
+| 笔记 | `/api/notes` | `notes.py` | 笔记列表/详情/批量保存/标签关联/导出 |
+| AI 创作 | `/api/ai` | `ai.py` | 改写/生成/标题/标签/润色/封面图/图片/描述 |
+| 草稿 | `/api/drafts` | `drafts.py` | 草稿 CRUD/发送至发布中心 |
+| 发布 | `/api/publish` | `publish.py` | 发布任务 CRUD/执行发布/素材管理 |
+| 文件管理 | `/api/files` | `files.py` | 图片上传/下载/合成/缩放裁剪 |
+| 关键词组 | `/api/keyword-groups` | `keyword_groups.py` | 关键词组 CRUD |
+| 标签 | `/api/tags` | `tags.py` | 标签 CRUD/笔记标签关联 |
+| 模型配置 | `/api/model-configs` | `model_configs.py` | AI 模型配置 CRUD/默认模型切换 |
+| 通知 | `/api/notifications` | `notifications.py` | 通知列表/未读计数/标记已读 |
+| 任务中心 | `/api/tasks` | `tasks.py` | 任务列表/详情/调度器状态 |
+| XHS 数据洞察 | `/api/xhs/analytics` | `xhs_analytics.py` | 运营总览/热门内容/话题/评论/竞品对标 |
+| XHS 自动运营 | `/api/xhs/auto-ops` | `xhs_auto_ops.py` | 自动任务 CRUD/执行 |
+| XHS 监控 | `/api/xhs/monitoring` | `xhs_monitoring.py` | 监控目标 CRUD/刷新 |
+| 视频工坊 | `/api/video-studio` | `video_studio.py` | 视频上传/截取封面/AI 描述 |
 
 ## 二、约定
 
@@ -1135,8 +1152,1338 @@ CSV 列：`线索等级, 评分, 需求类型, 评论内容, 识别理由, 跟�
 
 ---
 
-## 十五、其他说明
+## 十五、用户认证 Auth
+
+路由前缀：`/api/auth`
+
+### 15.1 用户注册
+
+`POST /api/auth/register`
+
+请求体：
+
+```json
+{
+  "username": "string (3-80)",
+  "password": "string (6-128)"
+}
+```
+
+行为：创建新用户，返回 JWT Token。用户名已存在返回 400。
+
+响应：
+
+```json
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "token_type": "bearer",
+  "user": {"id": 1, "username": "string"}
+}
+```
+
+### 15.2 用户登录
+
+`POST /api/auth/login`
+
+请求体：同注册。
+
+行为：验证用户名和密码，返回 JWT Token。密码使用 PBKDF2_SHA256 验证。用户名或密码错误返回 401。
+
+响应：同注册。
+
+### 15.3 刷新 Token
+
+`POST /api/auth/refresh`
+
+请求体：
+
+```json
+{ "refresh_token": "eyJ..." }
+```
+
+行为：验证 refresh_token，返回新的 access_token。Token 无效返回 401。
+
+响应：
+
+```json
+{ "access_token": "eyJ...", "token_type": "bearer" }
+```
+
+### 15.4 登出
+
+`POST /api/auth/logout`
+
+响应：`{"status": "ok"}`
+
+### 15.5 获取当前用户
+
+`GET /api/auth/me`
+
+需要认证（Bearer Token）。
+
+响应：`{"id": 1, "username": "string"}`
+
+---
+
+## 十六、平台账号 Accounts
+
+路由前缀：`/api/accounts`
+
+所有接口需要认证。
+
+### 16.1 账号列表
+
+`GET /api/accounts`
+
+查询参数：
+
+- `platform`（可选）：按平台过滤
+- `page` / `page_size`
+
+响应：`paginated([AccountOut])`。
+
+`AccountOut` 字段：`id, user_id, platform, sub_type, external_user_id, nickname, avatar_url, status, status_message, profile_json, created_at, updated_at`。
+
+### 16.2 Cookie 导入
+
+`POST /api/accounts/import-cookie`
+
+请求体：
+
+```json
+{
+  "platform": "xhs",
+  "sub_type": "pc",
+  "cookie_string": "cookie文本",
+  "sync_creator": false
+}
+```
+
+行为：
+- 解析 Cookie 文本，获取用户信息
+- PC 类型自动调用 XHS 自身接口补充用户资料
+- `sync_creator=true` 时自动同步创作者端账号（PC Cookie 换取创作者端 Cookie）
+- Cookie 使用 Fernet 加密存储
+
+响应：`AccountOut`（含 `action` 字段：`created` / `updated`）。
+
+### 16.3 检查账号状态
+
+`POST /api/accounts/{account_id}/check`
+
+行为：使用存储的 Cookie 验证账号是否有效，更新状态（`active` / `expired`）。
+
+响应：`AccountOut`。
+
+### 16.4 更新账号
+
+`PATCH /api/accounts/{account_id}`
+
+响应：`{"id": account_id, "status": "updated"}`
+
+### 16.5 删除账号
+
+`DELETE /api/accounts/{account_id}`
+
+行为：删除账号及其所有 Cookie 版本记录。
+
+响应：`{"id": account_id, "status": "deleted"}`
+
+### 16.6 Cookie 状态总览
+
+`GET /api/accounts/cookie-status`
+
+行为：按平台汇总当前用户的账号和 Cookie 可用状态。
+
+响应：
+
+```json
+{
+  "platforms": [
+    {
+      "platform": "xhs",
+      "total_accounts": 2,
+      "active_accounts": 1,
+      "expired_accounts": 1,
+      "cookies_available": true,
+      "crawl_ready": true
+    }
+  ]
+}
+```
+
+---
+
+## 十七、登录会话 Login Sessions
+
+路由前缀：`/api/xhs/login-sessions`
+
+所有接口需要认证。
+
+### 17.1 PC 端 QR 码登录
+
+`POST /api/xhs/login-sessions/pc/qrcode`
+
+请求体（可选）：
+
+```json
+{ "sync_creator": false }
+```
+
+行为：生成小红书 PC 端登录二维码，创建登录会话。
+
+响应：
+
+```json
+{
+  "session_id": 1,
+  "status": "pending",
+  "qr_url": "https://...",
+  "qr_image_data_url": "data:image/png;base64,..."
+}
+```
+
+### 17.2 创作者端 QR 码登录
+
+`POST /api/xhs/login-sessions/creator/qrcode`
+
+行为：生成小红书创作者端登录二维码。
+
+响应：同 PC 端。
+
+### 17.3 手机验证码发送
+
+`POST /api/xhs/login-sessions/phone/send-code`
+
+请求体：
+
+```json
+{
+  "phone": "13800138000",
+  "sync_creator": false
+}
+```
+
+行为：向手机发送验证码，创建登录会话。
+
+响应：
+
+```json
+{
+  "session_id": 1,
+  "status": "pending",
+  "phone_mask": "138****8000"
+}
+```
+
+### 17.4 手机验证码确认
+
+`POST /api/xhs/login-sessions/phone/confirm`
+
+请求体：
+
+```json
+{
+  "session_id": 1,
+  "phone": "13800138000",
+  "code": "123456",
+  "sync_creator": null
+}
+```
+
+行为：确认手机验证码，完成登录。Cookie 转存至 `account_cookie_versions`，创建平台账号。
+
+响应：`AccountOut`。
+
+### 17.5 QR 码登录确认（轮询）
+
+`POST /api/xhs/login-sessions/{session_id}/confirm`
+
+行为：检查 QR 码是否已扫码确认。已确认则创建平台账号并保存 Cookie。
+
+响应：
+
+```json
+{
+  "status": "confirmed",
+  "account": { ... }
+}
+```
+
+---
+
+## 十八、笔记 Notes
+
+路由前缀：`/api/notes`
+
+所有接口需要认证。
+
+### 18.1 笔记列表
+
+`GET /api/notes`
+
+查询参数：
+
+- `platform`（可选）
+- `keyword`（可选，在 title/content 中模糊匹配）
+- `tag_id`（可选，按标签过滤）
+- `page` / `page_size`
+
+响应：`paginated([NoteOut])`。
+
+`NoteOut` 字段：`id, platform, note_id, title, content, author_name, created_at`。
+
+### 18.2 笔记详情
+
+`GET /api/notes/{note_db_id}`
+
+响应：`NoteOut` + `assets`（素材列表）+ `comments`（评论列表）+ `tags`（标签列表）。
+
+### 18.3 批量保存笔记
+
+`POST /api/notes/batch-save`
+
+请求体：
+
+```json
+{
+  "account_id": 1,
+  "note_ids": ["note_id_1", "note_id_2"],
+  "fetch_comments": false
+}
+```
+
+行为：使用指定账号的 Cookie 调用 XHS PC API 获取笔记详情，保存笔记、素材和评论。已存在的笔记跳过。
+
+响应：`{"saved_count": 2, "skipped_count": 0}`
+
+### 18.4 笔记关联标签
+
+`POST /api/notes/{note_db_id}/tags`
+
+请求体：
+
+```json
+{ "tag_ids": [1, 2, 3] }
+```
+
+行为：为笔记设置标签关联（替换已有标签）。
+
+响应：`{"note_id": 1, "tag_ids": [1, 2, 3]}`
+
+### 18.5 删除笔记
+
+`DELETE /api/notes/{note_db_id}`
+
+响应：`{"id": note_db_id, "status": "deleted"}`
+
+### 18.6 导出笔记
+
+`POST /api/notes/export`
+
+请求体：
+
+```json
+{
+  "note_ids": ["note_id_1", "note_id_2"],
+  "format": "json"
+}
+```
+
+`format` 可选值：`json` / `csv`。
+
+---
+
+## 十九、AI 创作 AI
+
+路由前缀：`/api/ai`
+
+所有接口需要认证。所有 AI 操作会创建 Task 记录用于追踪。
+
+### 19.1 笔记改写
+
+`POST /api/ai/rewrite`
+
+请求体：
+
+```json
+{
+  "draft_id": 1,
+  "instruction": "改写为更口语化的风格"
+}
+```
+
+行为：基于已有草稿，使用默认文本模型改写内容。更新草稿的 title 和 body。
+
+响应：`success_response(DraftOut)`
+
+### 19.2 笔记生成
+
+`POST /api/ai/generate`
+
+请求体：
+
+```json
+{
+  "platform": "xhs",
+  "topic": "信用贷攻略",
+  "reference": "参考内容",
+  "instruction": "生成小红书风格笔记"
+}
+```
+
+行为：使用默认文本模型生成新笔记，创建 AI 草稿。
+
+响应：`success_response(DraftOut)`
+
+### 19.3 标题生成
+
+`POST /api/ai/generate-title`
+
+请求体：
+
+```json
+{
+  "title": "原标题",
+  "body": "正文内容",
+  "count": 5
+}
+```
+
+行为：生成多个标题候选（1-10 个）。
+
+响应：`success_response({"titles": ["标题1", "标题2", ...]})`
+
+### 19.4 标签生成
+
+`POST /api/ai/generate-tags`
+
+请求体：
+
+```json
+{
+  "title": "标题",
+  "body": "正文",
+  "count": 8
+}
+```
+
+行为：生成标签候选（1-20 个）。
+
+响应：`success_response({"tags": ["标签1", "标签2", ...]})`
+
+### 19.5 文本润色
+
+`POST /api/ai/polish`
+
+请求体：
+
+```json
+{
+  "text": "待润色文本",
+  "instruction": "使其更专业"
+}
+```
+
+响应：`success_response({"polished_text": "..."})`
+
+### 19.6 封面图生成
+
+`POST /api/ai/generate-cover`
+
+请求体：
+
+```json
+{
+  "prompt": "金融主题封面",
+  "draft_id": null,
+  "size": "1024x1024",
+  "style": "clean"
+}
+```
+
+行为：使用默认图片模型生成封面图，保存为 `ai_generated_assets` 记录。
+
+响应：`success_response(GeneratedAssetOut)`
+
+### 19.7 图片生成
+
+`POST /api/ai/generate-image`
+
+请求体：
+
+```json
+{
+  "prompt": "一张信用卡图片",
+  "reference_images": [],
+  "save_to_assets": true
+}
+```
+
+响应：`success_response(GeneratedAssetOut)`
+
+### 19.8 图片描述
+
+`POST /api/ai/describe-image`
+
+请求体：
+
+```json
+{
+  "image_url": "https://...",
+  "instruction": "描述这张图片"
+}
+```
+
+响应：`success_response({"description": "..."})`
+
+---
+
+## 二十、草稿 Drafts
+
+路由前缀：`/api/drafts`
+
+所有接口需要认证。
+
+### 20.1 草稿列表
+
+`GET /api/drafts`
+
+查询参数：
+
+- `platform`（可选）
+- `page` / `page_size`
+
+响应：`success_response(paginated([DraftOut]))`。
+
+`DraftOut` 字段：`id, platform, title, body, tags, source_note_id, intent, status, created_at`。
+
+### 20.2 创建草稿
+
+`POST /api/drafts`
+
+请求体：
+
+```json
+{
+  "platform": "xhs",
+  "source_note_id": null,
+  "title": "草稿标题",
+  "body": "草稿正文",
+  "intent": "publish"
+}
+```
+
+行为：创建草稿。如指定 `source_note_id`，自动复制源笔记的标题、正文、标签和素材。
+
+响应：`success_response(DraftOut)`
+
+### 20.3 更新草稿
+
+`PATCH /api/drafts/{draft_id}`
+
+请求体：
+
+```json
+{
+  "title": "新标题",
+  "body": "新正文",
+  "tags": [{"name": "标签1"}]
+}
+```
+
+响应：`success_response(DraftOut)`
+
+### 20.4 发送至发布中心
+
+`POST /api/drafts/{draft_id}/send-to-publish`
+
+请求体：
+
+```json
+{
+  "platform_account_id": 1,
+  "publish_mode": "immediate",
+  "scheduled_at": null,
+  "topics": ["话题1"],
+  "location": "上海",
+  "privacy_type": 0,
+  "is_private": false
+}
+```
+
+行为：将草稿转为发布任务（`publish_jobs`），草稿素材同步为发布素材。
+
+响应：`success_response(PublishJobOut)`
+
+### 20.5 删除草稿
+
+`DELETE /api/drafts/{draft_id}`
+
+响应：`success_response({"id": draft_id, "status": "deleted"})`
+
+---
+
+## 二十一、发布 Publish
+
+路由前缀：`/api/publish`
+
+所有接口需要认证。
+
+### 21.1 发布任务列表
+
+`GET /api/publish`
+
+查询参数：
+
+- `status`（可选）
+- `page` / `page_size`
+
+响应：`paginated([PublishJobOut])`。
+
+`PublishJobOut` 字段：`id, platform_account_id, source_draft_id, platform, title, body, publish_mode, publish_options, status, scheduled_at, external_note_id, publish_error, published_at, created_at`。
+
+- `publish_mode`：`immediate` / `scheduled`
+- `status`：`pending` / `uploading` / `publishing` / `published` / `failed`
+
+### 21.2 创建发布任务
+
+`POST /api/publish`
+
+请求体：
+
+```json
+{
+  "platform_account_id": 1,
+  "source_draft_id": 1,
+  "title": "发布标题",
+  "body": "发布正文",
+  "publish_mode": "immediate",
+  "topics": ["话题1"],
+  "location": "上海",
+  "is_private": false
+}
+```
+
+响应：`success_response(PublishJobOut)`
+
+### 21.3 更新发布任务
+
+`PATCH /api/publish/{job_id}`
+
+请求体（所有字段可选）：
+
+```json
+{
+  "title": "新标题",
+  "body": "新正文",
+  "platform_account_id": 2,
+  "publish_mode": "scheduled",
+  "scheduled_at": "2026-05-21T10:00:00Z",
+  "topics": ["新话题"],
+  "location": "北京",
+  "privacy_type": 1
+}
+```
+
+响应：`success_response(PublishJobOut)`
+
+### 21.4 执行发布
+
+`POST /api/publish/{job_id}/execute`
+
+行为：
+1. 获取创作者端账号 Cookie
+2. 上传素材（图片/视频）至创作者端
+3. 调用创作者端发布接口
+4. 更新发布状态和外部笔记 ID
+
+响应：`success_response(PublishJobOut)`
+
+### 21.5 发布任务详情
+
+`GET /api/publish/{job_id}`
+
+响应：`success_response(PublishJobOut)`
+
+### 21.6 添加发布素材
+
+`POST /api/publish/{job_id}/assets`
+
+请求体：
+
+```json
+{
+  "asset_type": "image",
+  "file_path": "/path/to/image.png"
+}
+```
+
+响应：`success_response(PublishAssetOut)`
+
+`PublishAssetOut` 字段：`id, publish_job_id, asset_type, file_path, upload_status, creator_media_id, upload_error, creator_upload_info`。
+
+- `upload_status`：`pending` / `uploaded` / `failed`
+
+### 21.7 删除发布任务
+
+`DELETE /api/publish/{job_id}`
+
+响应：`success_response({"id": job_id, "status": "deleted"})`
+
+---
+
+## 二十二、文件管理 Files
+
+路由前缀：`/api/files`
+
+所有接口需要认证。文件按用户 ID 前缀隔离。
+
+### 22.1 用户图片列表
+
+`GET /api/files/images`
+
+响应：`success_response({"items": [{"file_name": "...", "url": "/api/files/media/...", "size": 12345}]})`
+
+### 22.2 删除图片
+
+`DELETE /api/files/images/{file_name}`
+
+行为：删除指定图片文件（仅限当前用户拥有的文件）。
+
+响应：`success_response({"deleted": true})`
+
+### 22.3 上传图片
+
+`POST /api/files/upload-image`
+
+请求体：`multipart/form-data`，字段 `file`。
+
+行为：上传图片文件，文件名以 `xhs-upload-u{user_id}-` 前缀存储。
+
+响应：`success_response({"file_name": "...", "download_url": "/api/files/media/..."})`
+
+### 22.4 下载媒体文件
+
+`GET /api/files/media/{file_name}`
+
+行为：下载指定媒体文件（图片/视频）。校验文件归属（用户 ID 前缀）。
+
+响应：`FileResponse`
+
+### 22.5 合成封面图
+
+`POST /api/files/compose-image`
+
+请求体：
+
+```json
+{
+  "title": "封面标题",
+  "body": "副标题",
+  "width": 1080,
+  "height": 1440,
+  "background_color": "#fafaf8",
+  "accent_color": "#111111"
+}
+```
+
+行为：使用 Pillow 合成封面图，保存为 PNG 文件。
+
+响应：`success_response({"file_name": "...", "download_url": "...", "width": 1080, "height": 1440})`
+
+### 22.6 图片缩放裁剪
+
+`POST /api/files/resize-image`
+
+请求体：
+
+```json
+{
+  "source_file_name": "原始文件名",
+  "width": 1080,
+  "height": 1440,
+  "mode": "cover",
+  "format": "png",
+  "quality": 90
+}
+```
+
+- `mode`：`cover`（裁剪填满）/ `contain`（等比缩放留白）
+
+响应：`success_response({"file_name": "...", "download_url": "...", "width": 1080, "height": 1440})`
+
+---
+
+## 二十三、关键词组 Keyword Groups
+
+路由前缀：`/api/keyword-groups`
+
+所有接口需要认证。
+
+### 23.1 关键词组列表
+
+`GET /api/keyword-groups`
+
+查询参数：
+
+- `platform`（可选）
+- `page` / `page_size`
+
+响应：`paginated([KeywordGroupOut])`。
+
+`KeywordGroupOut` 字段：`id, platform, name, keywords, created_at, updated_at`。
+
+### 23.2 创建关键词组
+
+`POST /api/keyword-groups`
+
+请求体：
+
+```json
+{
+  "platform": "xhs",
+  "name": "信用贷关键词",
+  "keywords": ["信用贷", "征信花了"]
+}
+```
+
+- `platform` 可选值：`xhs` / `douyin` / `kuaishou` / `weibo` / `xianyu` / `taobao`
+- `keywords`：1-50 个关键词，自动去重
+
+响应：`KeywordGroupOut`
+
+### 23.3 更新关键词组
+
+`PATCH /api/keyword-groups/{group_id}`
+
+请求体：
+
+```json
+{
+  "name": "新名称",
+  "keywords": ["新关键词1", "新关键词2"]
+}
+```
+
+响应：`KeywordGroupOut`
+
+### 23.4 删除关键词组
+
+`DELETE /api/keyword-groups/{group_id}`
+
+响应：`success_response({"id": group_id, "status": "deleted"})`
+
+---
+
+## 二十四、标签 Tags
+
+路由前缀：`/api/tags`
+
+所有接口需要认证。同一用户下标签名称唯一。
+
+### 24.1 标签列表
+
+`GET /api/tags`
+
+查询参数：`page` / `page_size`（默认 100）
+
+响应：`paginated([TagOut])`。
+
+`TagOut` 字段：`id, name, color`。
+
+### 24.2 创建标签
+
+`POST /api/tags`
+
+请求体：
+
+```json
+{
+  "name": "标签名称",
+  "color": "#111111"
+}
+```
+
+响应：`TagOut`
+
+### 24.3 更新标签
+
+`PATCH /api/tags/{tag_id}`
+
+请求体：
+
+```json
+{
+  "name": "新名称",
+  "color": "#FF0000"
+}
+```
+
+响应：`TagOut`
+
+### 24.4 删除标签
+
+`DELETE /api/tags/{tag_id}`
+
+行为：删除标签及其所有笔记关联。
+
+响应：`success_response({"id": tag_id, "status": "deleted"})`
+
+---
+
+## 二十五、模型配置 Model Configs
+
+路由前缀：`/api/model-configs`
+
+所有接口需要认证。API Key 使用 Fernet 加密存储。
+
+### 25.1 模型配置列表
+
+`GET /api/model-configs`
+
+查询参数：
+
+- `model_type`（可选）：`text` / `image`
+- `page` / `page_size`
+
+响应：`success_response(paginated([ModelConfigOut]))`。
+
+`ModelConfigOut` 字段：`id, name, model_type, provider, model_name, base_url, has_api_key, is_default`。
+
+- `has_api_key`：bool，是否已配置 API Key（不返回实际值）
+
+### 25.2 创建模型配置
+
+`POST /api/model-configs`
+
+请求体：
+
+```json
+{
+  "name": "GPT-5.4",
+  "model_type": "text",
+  "provider": "openai",
+  "model_name": "gpt-5.4",
+  "base_url": "https://api.openai.com/v1",
+  "api_key": "sk-...",
+  "is_default": true
+}
+```
+
+行为：创建模型配置，API Key 加密存储。`is_default=true` 时自动清除同类型其他默认标记。
+
+响应：`success_response(ModelConfigOut)`
+
+### 25.3 更新模型配置
+
+`PATCH /api/model-configs/{config_id}`
+
+请求体（所有字段可选）：
+
+```json
+{
+  "name": "新名称",
+  "provider": "新提供商",
+  "model_name": "新模型",
+  "base_url": "新URL",
+  "api_key": "新Key",
+  "is_default": true
+}
+```
+
+响应：`success_response(ModelConfigOut)`
+
+### 25.4 删除模型配置
+
+`DELETE /api/model-configs/{config_id}`
+
+响应：`success_response({"id": config_id, "status": "deleted"})`
+
+---
+
+## 二十六、通知 Notifications
+
+路由前缀：`/api/notifications`
+
+所有接口需要认证。
+
+### 26.1 通知列表
+
+`GET /api/notifications`
+
+查询参数：
+
+- `unread`（可选，bool）：仅返回未读通知
+- `level`（可选）：`info` / `warning` / `error` / `success`
+- `source_type`（可选）：`crawl_task` / `lead` / `task` / `account` / `account_expired` / `publish_job`
+- `page` / `page_size`
+
+响应：`success_response(paginated([NotificationOut]))`。
+
+`NotificationOut` 字段：`id, title, body, level, source_task_id, source_type, source_id, is_read, created_at`。
+
+### 26.2 未读计数
+
+`GET /api/notifications/unread-count`
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "count": 5,
+    "breakdown": {"info": 2, "warning": 2, "error": 1}
+  }
+}
+```
+
+### 26.3 标记已读
+
+`POST /api/notifications/{notification_id}/read`
+
+响应：`success_response(NotificationOut)`
+
+### 26.4 全部标记已读
+
+`POST /api/notifications/read-all`
+
+响应：`success_response({"marked": 5})`
+
+---
+
+## 二十七、任务中心 Tasks
+
+路由前缀：`/api/tasks`
+
+所有接口需要认证。
+
+### 27.1 任务列表
+
+`GET /api/tasks`
+
+查询参数：
+
+- `platform`（可选）
+- `page` / `page_size`
+
+响应：`success_response(paginated([TaskOut]))`。
+
+`TaskOut` 字段：`id, platform, task_type, status, progress, payload, created_at, started_at, finished_at, duration_ms, error_type, retry_count, max_retries, parent_task_id`。
+
+- `status`：`pending` / `running` / `completed` / `failed`
+- `duration_ms`：任务耗时（毫秒），由 `started_at` 和 `finished_at` 计算
+- `parent_task_id`：父任务 ID，支持子任务层级
+
+### 27.2 任务详情
+
+`GET /api/tasks/{task_id}`
+
+响应：`success_response(TaskOut)` + `children`（子任务列表）。
+
+### 27.3 调度器状态
+
+`GET /api/tasks/scheduler/status`
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "enabled": true,
+    "running": true,
+    "jobs": [...],
+    "recent_tasks": [TaskOut, ...]
+  }
+}
+```
+
+---
+
+## 二十八、XHS 数据洞察 Analytics
+
+路由前缀：`/api/xhs/analytics`
+
+所有接口需要认证。
+
+### 28.1 运营总览
+
+`GET /api/xhs/analytics/overview`
+
+响应：
+
+```json
+{
+  "platform": "xhs",
+  "today_crawls": 0,
+  "saved_notes": 10,
+  "pending_publishes": 0,
+  "healthy_accounts": 1,
+  "at_risk_accounts": 0,
+  "comment_count": 0,
+  "total_engagement": 0,
+  "hot_topics": [],
+  "recent_activity": []
+}
+```
+
+### 28.2 热门内容
+
+`GET /api/xhs/analytics/top-content`
+
+响应：`{"items": []}`
+
+### 28.3 热门话题
+
+`GET /api/xhs/analytics/hot-topics`
+
+响应：`{"items": []}`
+
+### 28.4 评论分析
+
+`GET /api/xhs/analytics/comment-insights`
+
+响应：
+
+```json
+{
+  "total_comments": 0,
+  "question_count": 0,
+  "top_terms": [],
+  "top_comments": []
+}
+```
+
+### 28.5 竞品对标
+
+`GET /api/xhs/analytics/benchmarks`
+
+响应：`{"targets": [], "summary": {}}`
+
+### 28.6 竞品对标创建草稿
+
+`POST /api/xhs/analytics/benchmarks/{target_id}/create-drafts`
+
+查询参数：`limit`（默认 5，1-20）
+
+响应：`{"created_count": 0, "draft_ids": []}`
+
+### 28.7 生成报告
+
+`POST /api/xhs/analytics/reports`
+
+响应：报告数据。
+
+---
+
+## 二十九、XHS 自动运营 Auto Ops
+
+路由前缀：`/api/xhs/auto-ops`
+
+所有接口需要认证。
+
+### 29.1 自动任务列表
+
+`GET /api/xhs/auto-ops/tasks`
+
+查询参数：`page` / `page_size`
+
+响应：`paginated([AutoTaskOut])`。
+
+`AutoTaskOut` 字段：`id, user_id, name, keywords, pc_account_id, creator_account_id, ai_instruction, status, last_run_at, next_run_at, total_published, created_at, schedule_type, schedule_time, schedule_days, schedule_interval_hours`。
+
+- `status`：`active` / `paused`
+- `schedule_type`：`manual` / `scheduled` / `periodic`
+
+### 29.2 创建自动任务
+
+`POST /api/xhs/auto-ops/tasks`
+
+请求体：
+
+```json
+{
+  "name": "每日自动发布",
+  "keywords": ["信用贷", "征信"],
+  "pc_account_id": 1,
+  "creator_account_id": 2,
+  "ai_instruction": "生成小红书风格笔记",
+  "schedule_type": "manual",
+  "schedule_time": "",
+  "schedule_days": "",
+  "schedule_interval_hours": 0
+}
+```
+
+响应：`AutoTaskOut`
+
+### 29.3 更新自动任务
+
+`PATCH /api/xhs/auto-ops/tasks/{task_id}`
+
+请求体（所有字段可选）：
+
+```json
+{
+  "name": "新名称",
+  "keywords": ["新关键词"],
+  "ai_instruction": "新指令",
+  "status": "paused",
+  "schedule_type": "periodic",
+  "schedule_interval_hours": 24
+}
+```
+
+响应：`AutoTaskOut`
+
+### 29.4 删除自动任务
+
+`DELETE /api/xhs/auto-ops/tasks/{task_id}`
+
+响应：`success_response({"id": task_id, "status": "deleted"})`
+
+### 29.5 执行自动任务
+
+`POST /api/xhs/auto-ops/tasks/{task_id}/execute`
+
+行为：手动触发自动运营任务执行。
+
+响应：`success_response(AutoTaskOut)`
+
+---
+
+## 三十、XHS 监控 Monitoring
+
+路由前缀：`/api/xhs/monitoring`
+
+所有接口需要认证。底层复用 `monitor_sources` 表，仅展示 `platform=xhs` 的记录。
+
+### 30.1 监控目标列表
+
+`GET /api/xhs/monitoring/targets`
+
+查询参数：`page` / `page_size`
+
+响应：`paginated([MonitoringTargetOut])`。
+
+`MonitoringTargetOut` 字段：`id, platform, target_type, name, value, status, config, last_refreshed_at, created_at, updated_at`。
+
+- `status`：`active` / `paused`（映射自 `monitor_sources.enabled`）
+
+### 30.2 创建监控目标
+
+`POST /api/xhs/monitoring/targets`
+
+请求体：
+
+```json
+{
+  "target_type": "keyword",
+  "name": "信用贷监控",
+  "value": "信用贷",
+  "status": "active",
+  "config": {}
+}
+```
+
+响应：`MonitoringTargetOut`
+
+### 30.3 刷新监控目标
+
+`POST /api/xhs/monitoring/targets/{target_id}/refresh`
+
+行为：更新 `last_crawled_at`，返回快照数据。
+
+响应：
+
+```json
+{
+  "target": { ... },
+  "task": {"id": 0, "status": "pending"},
+  "snapshot": {"id": 0, "target_id": 1, "payload": {}, "created_at": "..."}
+}
+```
+
+### 30.4 删除监控目标
+
+`DELETE /api/xhs/monitoring/targets/{target_id}`
+
+响应：`success_response({"id": target_id, "status": "deleted"})`
+
+---
+
+## 三十一、视频工坊 Video Studio
+
+路由前缀：`/api/video-studio`
+
+所有接口需要认证。文件按用户 ID 前缀隔离。
+
+### 31.1 视频列表
+
+`GET /api/video-studio/videos`
+
+查询参数：`page` / `page_size`
+
+响应：`success_response(paginated([VideoOut]))`。
+
+### 31.2 上传视频
+
+`POST /api/video-studio/upload`
+
+请求体：`multipart/form-data`，字段 `file`。
+
+行为：上传视频文件，文件名以 `xhs-video-u{user_id}-` 前缀存储。
+
+响应：`success_response({"file_name": "...", "download_url": "...", "media_type": "video/mp4"})`
+
+### 31.3 截取封面帧
+
+`POST /api/video-studio/extract-cover`
+
+请求体：
+
+```json
+{
+  "video_file_name": "视频文件名",
+  "timestamp_seconds": 0.0,
+  "width": 1080,
+  "height": 1440
+}
+```
+
+行为：使用 ffmpeg 从视频中截取指定时间点的画面作为封面图。
+
+响应：`success_response({"file_name": "...", "download_url": "...", "width": 1080, "height": 1440})`
+
+### 31.4 AI 视频描述
+
+`POST /api/video-studio/describe-video`
+
+请求体：
+
+```json
+{
+  "video_url": "https://...",
+  "instruction": "描述视频内容"
+}
+```
+
+行为：使用默认文本模型生成视频内容描述。
+
+响应：`success_response({"description": "..."})`
+
+---
+
+## 三十二、其他说明
 
 - `mock` / `playwright` / `external_api` / `generic_web` 采集器（代码文件存在但 CollectorFactory 不路由）
 - 所有采集任务通过 `CrawlTaskQueue` 队列管理，同一时间仅执行一个采集任务
 - 定时采集调度器使用 APScheduler，每分钟检查一次需要触发的监控源
+- 小红书运营模块所有接口需要 JWT Bearer Token 认证
+- Cookie 使用 Fernet 对称加密存储，密钥由 `SECRET_KEY` 派生
+- AI 操作自动创建 Task 记录，支持任务追踪和错误处理
+- 文件存储按用户 ID 前缀隔离，确保用户间文件不可互访
+- API Key 使用 Fernet 加密存储，接口仅返回 `has_api_key` 布尔值
