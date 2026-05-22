@@ -18,7 +18,7 @@ service = CompetitorDiscoveryService()
 def not_found_response() -> JSONResponse:
     return JSONResponse(
         status_code=404,
-        content=error_response("pending competitor not found"),
+        content=error_response("同行账号未找到"),
     )
 
 

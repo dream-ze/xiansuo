@@ -16,16 +16,16 @@ function buildForm(overrides: Partial<CreateFormState>): CreateFormState {
 }
 
 describe("MonitorSourcesPage source_type 与 collector_type 联动", () => {
-  it("keyword 允许 media_crawler 和 mock", () => {
-    expect(getAllowedCollectorTypesBySourceType("keyword")).toEqual(["media_crawler", "mock"]);
+  it("keyword 允许 media_crawler 和 xhs_sdk", () => {
+    expect(getAllowedCollectorTypesBySourceType("keyword")).toEqual(["media_crawler", "xhs_sdk"]);
   });
 
-  it("manual_post 允许 media_crawler 和 mock", () => {
-    expect(getAllowedCollectorTypesBySourceType("manual_post")).toEqual(["media_crawler", "mock"]);
+  it("manual_post 允许 media_crawler 和 xhs_sdk", () => {
+    expect(getAllowedCollectorTypesBySourceType("manual_post")).toEqual(["media_crawler", "xhs_sdk"]);
   });
 
-  it("未知 source_type 回退为 mock", () => {
-    expect(getAllowedCollectorTypesBySourceType("unknown")).toEqual(["mock"]);
+  it("未知 source_type 回退为 media_crawler", () => {
+    expect(getAllowedCollectorTypesBySourceType("unknown")).toEqual(["media_crawler"]);
   });
 });
 
@@ -37,8 +37,8 @@ describe("MonitorSourcesPage 动态字段", () => {
     expect(fields).toContain("enable_comments");
   });
 
-  it("mock 字段集合仅包含 max_posts 和 max_comments_per_post", () => {
-    const fields = getDynamicFieldKeysByCollectorType("mock");
+  it("xhs_sdk 字段集合仅包含 max_posts 和 max_comments_per_post", () => {
+    const fields = getDynamicFieldKeysByCollectorType("xhs_sdk");
     expect(fields).toEqual(["max_posts", "max_comments_per_post", "time_range"]);
   });
 });
@@ -72,10 +72,10 @@ describe("MonitorSourcesPage 表单校验", () => {
     expect((payload.config as Record<string, unknown>).enable_comments).toBe(true);
   });
 
-  it("mock 合法配置可生成 payload", () => {
+  it("xhs_sdk 合法配置可生成 payload", () => {
     const form = buildForm({
       source_type: "keyword",
-      collector_type: "mock",
+      collector_type: "xhs_sdk",
       platform: "xhs",
       value: "征信花了",
       max_posts: "5",
@@ -83,7 +83,7 @@ describe("MonitorSourcesPage 表单校验", () => {
     });
 
     const payload = buildPayloadFromForm(form);
-    expect((payload.config as Record<string, unknown>).collector_type).toBe("mock");
+    expect((payload.config as Record<string, unknown>).collector_type).toBe("xhs_sdk");
     expect((payload.config as Record<string, unknown>).max_posts).toBe(5);
     expect((payload.config as Record<string, unknown>).max_comments_per_post).toBe(10);
   });

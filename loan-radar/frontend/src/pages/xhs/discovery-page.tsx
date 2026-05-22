@@ -216,7 +216,7 @@ export function XhsDiscoveryPage() {
           </Row>
         </form>
         {error && <Alert message={error} type="error" showIcon style={{ marginTop: 12 }} closable onClose={() => setError(null)} />}
-        {noPcAccount && <Empty description="还没有可用的 PC 账号" style={{ marginTop: 24 }}><Link to="/platforms/xhs/accounts"><Button type="primary" icon={<LinkOutlined />}>去绑定账号</Button></Link></Empty>}
+        {noPcAccount && <Empty description="还没有可用的 PC 账号" style={{ marginTop: 24 }}><Link to="/xhs/accounts"><Button type="primary" icon={<LinkOutlined />}>去绑定账号</Button></Link></Empty>}
       </Card>
 
       <Card title={<Space><Title level={5} style={{ margin: 0 }}>{searchedKeyword ? `"${searchedKeyword}" 的搜索结果` : "搜索结果"}</Title><Tag>{notes.length} 篇</Tag></Space>}>

@@ -99,6 +99,50 @@ def _run_due_publish_jobs() -> None:
         logger.exception("XHS publish scheduler failed")
 
 
+def _run_due_auto_ops_tasks() -> None:
+    try:
+        from app.core.database import SessionLocal as _SessionLocal
+        from app.core.time import shanghai_now as _shanghai_now
+        from app.models import AutoTask, User
+        from app.api.routes.xhs_auto_ops import _find_source_note, _generate_draft_content, _create_publish_job
+        import json as _json
+        from sqlalchemy import select as _select
+
+        db = _SessionLocal()
+        try:
+            active_tasks = db.scalars(
+                _select(AutoTask).where(AutoTask.status == "active")
+            ).all()
+            executed = 0
+            for task in active_tasks:
+                config = _json.loads(task.config) if isinstance(task.config, str) else (task.config or {})
+                schedule_type = config.get("schedule_type", "manual")
+                if schedule_type == "manual":
+                    continue
+                try:
+                    user = db.get(User, task.user_id)
+                    if not user:
+                        continue
+                    keywords = config.get("keywords", [])
+                    ai_instruction = config.get("ai_instruction", "")
+                    creator_account_id = config.get("creator_account_id")
+                    source_note = _find_source_note(db, user.id, keywords)
+                    draft = _generate_draft_content(db, user.id, keywords, source_note, ai_instruction)
+                    _create_publish_job(db, user.id, draft, creator_account_id)
+                    task.last_run_at = _shanghai_now()
+                    db.commit()
+                    executed += 1
+                except Exception:
+                    db.rollback()
+                    logger.exception("auto-ops scheduled task %d failed", task.id)
+            if executed > 0:
+                logger.info("XHS auto-ops scheduler: %d tasks executed", executed)
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("XHS auto-ops scheduler failed")
+
+
 def _check_account_cookies() -> None:
     try:
         from app.services.xhs_scheduler_service import check_all_account_cookies_once
@@ -167,8 +211,18 @@ def start_scheduler() -> None:
         coalesce=True,
     )
 
+    _scheduler.add_job(
+        _run_due_auto_ops_tasks,
+        trigger=IntervalTrigger(hours=1),
+        id="xhs_auto_ops_runner",
+        name="XHS auto-ops due tasks",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
     _scheduler.start()
-    logger.info("unified scheduler started (crawl check: %d min, publish check: %d sec, cookie check: %d hr)", _CHECK_INTERVAL_MINUTES, _PUBLISH_CHECK_INTERVAL_SECONDS, _COOKIE_CHECK_INTERVAL_HOURS)
+    logger.info("unified scheduler started (crawl check: %d min, publish check: %d sec, cookie check: %d hr, auto-ops: 1 hr)", _CHECK_INTERVAL_MINUTES, _PUBLISH_CHECK_INTERVAL_SECONDS, _COOKIE_CHECK_INTERVAL_HOURS)
 
 
 def stop_scheduler() -> None:

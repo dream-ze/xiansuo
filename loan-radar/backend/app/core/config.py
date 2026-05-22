@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     frontend_build_dir: str = Field(default="./frontend/dist", alias="FRONTEND_BUILD_DIR")
 
     cors_origins: str = Field(
-        default="http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173",
+        default="http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:8001,http://localhost:8001",
         alias="CORS_ORIGINS",
     )
 

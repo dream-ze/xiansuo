@@ -40,7 +40,7 @@ def get_db():
 def not_found_response() -> JSONResponse:
     return JSONResponse(
         status_code=404,
-        content=error_response("monitor source not found"),
+        content=error_response("监控源未找到"),
     )
 
 

@@ -207,12 +207,21 @@ export function AutoOpsPage() {
       const result = await runAutoTask(task.id);
       setLastRunResult(result);
       setTasks((prev) => prev.map((t) => (t.id === result.auto_task.id ? result.auto_task : t)));
+      const draftInfo = result.draft?.id
+        ? `草稿 #${result.draft.id}「${result.draft.title}」已创建`
+        : "未生成草稿";
+      const publishInfo = result.publish_job?.id
+        ? `，发布任务 #${result.publish_job.id} 待确认`
+        : "";
+      const sourceInfo = result.source_note?.id
+        ? `来源笔记 #${result.source_note.id}`
+        : "无匹配来源笔记";
       setMessage(
-        `任务"${task.name}"执行完成 -- 关键词: ${result.keyword}, 来源笔记: ${result.source_note.title}, 已创建发布任务 #${result.publish_job.id}。`
+        `任务"${task.name}"执行完成 — ${sourceInfo}，关键词: ${result.keyword}，${draftInfo}${publishInfo}。`
       );
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(`执行失败：${detail || "请检查账号和模型配置。"}`);
+      const msg = err instanceof Error ? err.message : "请检查账号和模型配置。";
+      setError(`执行失败：${msg}`);
     } finally {
       setRunningTaskId(null);
     }
@@ -450,24 +459,36 @@ export function AutoOpsPage() {
         >
           <Descriptions column={{ xs: 1, md: 2, lg: 4 }} size="small">
             <Descriptions.Item label="关键词">{lastRunResult.keyword}</Descriptions.Item>
-            <Descriptions.Item label="来源笔记">{lastRunResult.source_note.title}</Descriptions.Item>
-            <Descriptions.Item label="互动量">
-              {lastRunResult.source_note.likes + lastRunResult.source_note.collects + lastRunResult.source_note.comments}
+            <Descriptions.Item label="来源笔记">
+              {lastRunResult.source_note?.id
+                ? `#${lastRunResult.source_note.id} ${lastRunResult.source_note.title}`
+                : "无匹配来源"}
             </Descriptions.Item>
-            <Descriptions.Item label="发布任务">#{lastRunResult.publish_job.id}</Descriptions.Item>
+            <Descriptions.Item label="草稿">
+              {lastRunResult.draft?.id
+                ? `#${lastRunResult.draft.id} (${lastRunResult.draft.status})`
+                : "未生成"}
+            </Descriptions.Item>
+            <Descriptions.Item label="发布任务">
+              {lastRunResult.publish_job?.id
+                ? `#${lastRunResult.publish_job.id} (${lastRunResult.publish_job.status})`
+                : "跳过（未配置 Creator 账号）"}
+            </Descriptions.Item>
           </Descriptions>
-          <div style={{ marginTop: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              改写后标题：{lastRunResult.draft.title}
-            </Text>
-            <Paragraph
-              type="secondary"
-              ellipsis={{ rows: 3, expandable: true, symbol: "展开" }}
-              style={{ fontSize: 12, marginTop: 4, marginBottom: 0 }}
-            >
-              {lastRunResult.draft.body}
-            </Paragraph>
-          </div>
+          {lastRunResult.draft?.id && (
+            <div style={{ marginTop: 12 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                生成标题：{lastRunResult.draft.title}
+              </Text>
+              <Paragraph
+                type="secondary"
+                ellipsis={{ rows: 3, expandable: true, symbol: "展开" }}
+                style={{ fontSize: 12, marginTop: 4, marginBottom: 0 }}
+              >
+                {lastRunResult.draft.body}
+              </Paragraph>
+            </div>
+          )}
         </Card>
       )}
 

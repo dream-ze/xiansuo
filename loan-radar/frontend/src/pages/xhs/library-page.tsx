@@ -240,7 +240,7 @@ export function XhsLibraryPage() {
     try {
       const d = await createDraftFromNote({ platform: "xhs", source_note_id: selectedNote.id, intent });
       setDetailActionMessage(intent === "rewrite" ? `已创建草稿 #${d.id}，正在跳转...` : `已创建草稿 #${d.id}，正在跳转...`);
-      setTimeout(() => navigate("/platforms/xhs/drafts"), 600);
+      setTimeout(() => navigate("/xhs/drafts"), 600);
     }
     catch { setDetailActionMessage("草稿创建失败。"); } finally { setIsCreatingDraft(false); }
   }
@@ -421,7 +421,7 @@ export function XhsLibraryPage() {
       {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
 
       {isLoading ? <Spin size="large" style={{ display: "block", textAlign: "center", margin: "48px 0" }} /> : notes.length === 0 ? (
-        <Empty description="内容库还是空的"><Link to="/platforms/xhs/discovery"><Button type="primary" icon={<BookOutlined />}>去发现笔记</Button></Link></Empty>
+        <Empty description="内容库还是空的"><Link to="/xhs/discovery"><Button type="primary" icon={<BookOutlined />}>去发现笔记</Button></Link></Empty>
       ) : viewMode === "table" ? (
         <Card size="small">
           <Table<SavedNote> columns={tableColumns} dataSource={notes} rowKey="id" size="small" pagination={{ pageSize: 20 }}

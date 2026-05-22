@@ -191,6 +191,37 @@ def convert_notes_to_posts(
     return ConvertResult(converted_count=converted, skipped_count=skipped, failed_count=failed, details=details)
 
 
+class CheckSavedRequest(BaseModel):
+    post_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class CheckSavedResult(BaseModel):
+    saved_post_ids: list[int]
+
+
+@router.post("/check-saved", response_model=CheckSavedResult)
+def check_posts_saved(
+    payload: CheckSavedRequest,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+):
+    posts = db.query(Post).filter(Post.id.in_(payload.post_ids)).all()
+    platform_note_ids = [p.post_id for p in posts]
+    if not platform_note_ids:
+        return CheckSavedResult(saved_post_ids=[])
+
+    saved_note_ids = db.execute(
+        select(Note.note_id).where(
+            Note.user_id == current_user.id,
+            Note.note_id.in_(platform_note_ids),
+        )
+    ).scalars().all()
+
+    saved_set = set(saved_note_ids)
+    saved_post_db_ids = [p.id for p in posts if p.post_id in saved_set]
+    return CheckSavedResult(saved_post_ids=saved_post_db_ids)
+
+
 @router.post("/posts-to-notes", response_model=ConvertResult)
 def convert_posts_to_notes(
     payload: ConvertPostToNoteRequest,

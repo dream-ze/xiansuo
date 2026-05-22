@@ -642,7 +642,7 @@ export function XhsDraftsPage() {
                 description={
                   <div>
                     <Paragraph type="secondary">还没有可编辑草稿。</Paragraph>
-                    <Link to="/platforms/xhs/library">
+                    <Link to="/xhs/library">
                       <Button size="small">去内容库选择笔记</Button>
                     </Link>
                   </div>

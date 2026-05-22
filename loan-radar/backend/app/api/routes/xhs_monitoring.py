@@ -12,6 +12,9 @@ from app.core.deps import require_current_user
 from app.core.time import shanghai_now
 from app.models import MonitorSource, User
 from app.schemas.common import paginated
+from app.schemas.crawl_task import CrawlTaskOut
+from app.services.crawl_task_service import create_queued_crawl_task
+from app.services.task_queue import CrawlTaskQueue
 
 router = APIRouter(prefix="/api/xhs/monitoring", tags=["xhs-monitoring"])
 
@@ -83,13 +86,26 @@ def refresh_monitoring_target(
     source = db.get(MonitorSource, target_id)
     if not source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target not found")
+
+    crawl_task = create_queued_crawl_task(db, source)
+    queue = CrawlTaskQueue.get_instance()
+    position = queue.enqueue(crawl_task.id)
+
     source.last_crawled_at = shanghai_now()
     db.commit()
     db.refresh(source)
+
+    crawl_task_data = CrawlTaskOut.model_validate(crawl_task).model_dump(mode="json")
+
     return {
         "target": _serialize_target(source),
-        "task": {"id": 0, "status": "pending"},
-        "snapshot": {"id": 0, "target_id": target_id, "payload": {}, "created_at": shanghai_now().isoformat()},
+        "task": {
+            "id": crawl_task.id,
+            "status": crawl_task.status,
+            "progress": crawl_task.progress,
+            "queue_position": position,
+        },
+        "crawl_task": crawl_task_data,
     }
 
 

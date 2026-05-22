@@ -28,7 +28,7 @@ class LeadStatusUpdate(BaseModel):
 
 
 def not_found_response() -> JSONResponse:
-    return JSONResponse(status_code=404, content=error_response("lead not found"))
+    return JSONResponse(status_code=404, content=error_response("线索未找到"))
 
 
 def validation_error_response(message: str) -> JSONResponse:

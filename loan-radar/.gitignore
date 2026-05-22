@@ -19,6 +19,9 @@ Thumbs.db
 
 backend/storage/
 
+tools/
+data/
+
 mediacrawler/.git/
 mediacrawler/.venv/
 mediacrawler/.pytest_cache/

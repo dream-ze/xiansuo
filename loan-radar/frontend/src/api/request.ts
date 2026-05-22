@@ -1,7 +1,5 @@
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-const isDev = viteEnv?.DEV;
-const defaultApiBaseUrl = isDev ? "" : "http://localhost:8001";
-const rawApiBaseUrl = viteEnv?.VITE_API_BASE_URL || defaultApiBaseUrl;
+const rawApiBaseUrl = viteEnv?.VITE_API_BASE_URL || "";
 export const API_BASE_URL = rawApiBaseUrl.replace(/\/$/, "");
 
 export type ApiResponse<T> = {
@@ -53,14 +51,19 @@ function forceLogout() {
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem("access_token");
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers ?? {}),
+      },
+      ...init,
+    });
+  } catch (err) {
+    throw new Error("网络连接失败，请检查后端服务是否启动");
+  }
 
   if (response.status === 401) {
     const refreshed = await tryRefreshToken();
@@ -99,12 +102,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new Error(payload.message || payload.detail || `请求失败: ${response.status} ${response.statusText}`);
+    const errMsg = payload?.message || payload?.detail || `请求失败: ${response.status} ${response.statusText}`;
+    throw new Error(errMsg);
   }
 
   if (payload && typeof payload.success === "boolean") {
     if (!payload.success) {
-      throw new Error(payload.message || `请求失败`);
+      throw new Error(payload.message || payload.detail || `请求失败`);
     }
     return payload.data as T;
   }

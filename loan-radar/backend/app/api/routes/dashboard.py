@@ -18,18 +18,10 @@ from app.utils.response import success_response
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(require_current_user)])
 
-
-def _count_today(db: Session, model, today):
-    return db.query(func.count(model.id)).filter(
-        func.date(model.created_at) == today
-    ).scalar() or 0
+_mc_health_cache: dict = {"result": None, "expires_at": datetime.min.replace(tzinfo=timezone.utc)}
 
 
-def _count_total(db: Session, model, extra_filters=None):
-    q = db.query(func.count(model.id))
-    if extra_filters:
-        for f in extra_filters:
-            q = q.filter(f)
+def _cnt(q):
     return q.scalar() or 0
 
 
@@ -38,58 +30,37 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     today = datetime.now(timezone.utc).date()
     yesterday = today - timedelta(days=1)
 
-    source_count = db.query(func.count(MonitorSource.id)).filter(
-        MonitorSource.enabled == True
-    ).scalar() or 0
+    source_count = _cnt(db.query(func.count(MonitorSource.id)).filter(MonitorSource.enabled == True))
 
-    today_task_count = _count_today(db, CrawlTask, today)
-    today_post_count = _count_today(db, Post, today)
-    today_comment_count = _count_today(db, Comment, today)
-    today_lead_count = _count_today(db, Lead, today)
-    today_a_lead_count = db.query(func.count(Lead.id)).filter(
-        func.date(Lead.created_at) == today,
-        Lead.lead_level == "A",
-    ).scalar() or 0
+    today_task_count = _cnt(db.query(func.count(CrawlTask.id)).filter(func.date(CrawlTask.created_at) == today))
+    today_post_count = _cnt(db.query(func.count(Post.id)).filter(func.date(Post.created_at) == today))
+    today_comment_count = _cnt(db.query(func.count(Comment.id)).filter(func.date(Comment.created_at) == today))
+    today_lead_count = _cnt(db.query(func.count(Lead.id)).filter(func.date(Lead.created_at) == today))
+    today_a_lead_count = _cnt(db.query(func.count(Lead.id)).filter(func.date(Lead.created_at) == today, Lead.lead_level == "A"))
 
-    total_task_count = _count_total(db, CrawlTask)
-    total_post_count = _count_total(db, Post)
-    total_comment_count = _count_total(db, Comment)
-    total_lead_count = _count_total(db, Lead)
-    total_a_lead_count = _count_total(db, Lead, [Lead.lead_level == "A"])
+    total_task_count = _cnt(db.query(func.count(CrawlTask.id)))
+    total_post_count = _cnt(db.query(func.count(Post.id)))
+    total_comment_count = _cnt(db.query(func.count(Comment.id)))
+    total_lead_count = _cnt(db.query(func.count(Lead.id)))
+    total_a_lead_count = _cnt(db.query(func.count(Lead.id)).filter(Lead.lead_level == "A"))
 
-    yesterday_lead_count = db.query(func.count(Lead.id)).filter(
-        func.date(Lead.created_at) == yesterday,
-    ).scalar() or 0
-    yesterday_a_lead_count = db.query(func.count(Lead.id)).filter(
-        func.date(Lead.created_at) == yesterday,
-        Lead.lead_level == "A",
-    ).scalar() or 0
-    yesterday_post_count = _count_today(db, Post, yesterday)
+    yesterday_lead_count = _cnt(db.query(func.count(Lead.id)).filter(func.date(Lead.created_at) == yesterday))
+    yesterday_a_lead_count = _cnt(db.query(func.count(Lead.id)).filter(func.date(Lead.created_at) == yesterday, Lead.lead_level == "A"))
+    yesterday_post_count = _cnt(db.query(func.count(Post.id)).filter(func.date(Post.created_at) == yesterday))
 
-    pending_competitor_count = db.query(func.count(PendingCompetitorAccount.id)).filter(
-        PendingCompetitorAccount.status == "pending",
-    ).scalar() or 0
+    pending_competitor_count = _cnt(db.query(func.count(PendingCompetitorAccount.id)).filter(PendingCompetitorAccount.status == "pending"))
 
-    crm_today_new = db.query(func.count(CrmCustomer.id)).filter(
-        func.date(CrmCustomer.created_at) == today,
-    ).scalar() or 0
-    crm_pending_follow = db.query(func.count(CrmCustomer.id)).filter(
-        CrmCustomer.status == "pending",
-    ).scalar() or 0
-    crm_overdue_follow = db.query(func.count(CrmCustomer.id)).filter(
+    crm_today_new = _cnt(db.query(func.count(CrmCustomer.id)).filter(func.date(CrmCustomer.created_at) == today))
+    crm_pending_follow = _cnt(db.query(func.count(CrmCustomer.id)).filter(CrmCustomer.status == "pending"))
+    crm_overdue_follow = _cnt(db.query(func.count(CrmCustomer.id)).filter(
         CrmCustomer.next_follow_up_at.isnot(None),
         CrmCustomer.next_follow_up_at < datetime.now(timezone.utc),
         CrmCustomer.status.notin_(["converted", "invalid"]),
-    ).scalar() or 0
-    crm_converted = db.query(func.count(CrmCustomer.id)).filter(
-        CrmCustomer.status == "converted",
-    ).scalar() or 0
+    ))
+    crm_converted = _cnt(db.query(func.count(CrmCustomer.id)).filter(CrmCustomer.status == "converted"))
 
-    xhs_notes_count = db.query(func.count(Note.id)).scalar() or 0
-    xhs_notes_today = _count_today(db, Note, today)
-    xhs_notes_with_video = db.query(func.count(Note.id)).filter(
-        Note.note_id != None,
-    ).scalar() or 0
+    xhs_notes_count = _cnt(db.query(func.count(Note.id)).filter(Note.platform == "xhs"))
+    xhs_notes_today = _cnt(db.query(func.count(Note.id)).filter(Note.platform == "xhs", func.date(Note.created_at) == today))
 
     recent_a_leads = (
         db.query(Lead)
@@ -130,6 +101,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             "post_count": task.post_count,
             "comment_count": task.comment_count,
             "lead_count": task.lead_count,
+            "collected_posts": task.collected_posts,
             "error_message": task.error_message or "",
             "started_at": task.started_at.isoformat() if task.started_at else None,
             "finished_at": task.finished_at.isoformat() if task.finished_at else None,
@@ -168,6 +140,10 @@ def get_media_crawler_health():
     import os
     from app.collectors.media_crawler.mappers import SUPPORTED_PLATFORMS, PLATFORM_LABELS
 
+    now = datetime.now(timezone.utc)
+    if _mc_health_cache["result"] is not None and now < _mc_health_cache["expires_at"]:
+        return _mc_health_cache["result"]
+
     mc_home = os.getenv("MEDIA_CRAWLER_HOME")
     embedded_mode = bool(mc_home)
 
@@ -181,32 +157,34 @@ def get_media_crawler_health():
     except Exception:
         shared_db_info = {"available": False}
 
+    platforms_list = [
+        {"value": p, "label": PLATFORM_LABELS.get(p, p)}
+        for p in sorted(SUPPORTED_PLATFORMS)
+    ]
+
     if embedded_mode:
         from pathlib import Path
         home_path = Path(mc_home) if mc_home else None
         mc_available = home_path.is_dir() if home_path else False
-        return success_response({
+        result = success_response({
             "status": "healthy" if mc_available else "misconfigured",
             "mode": "embedded",
             "media_crawler_home": mc_home,
             "shared_db": shared_db_info,
-            "supported_platforms": [
-                {"value": p, "label": PLATFORM_LABELS.get(p, p)}
-                for p in sorted(SUPPORTED_PLATFORMS)
-            ],
+            "supported_platforms": platforms_list,
+        })
+    else:
+        from app.collectors.media_crawler.bridge import MediaCrawlerBridge
+        bridge = MediaCrawlerBridge()
+        is_healthy = bridge.health_check()
+        result = success_response({
+            "status": "healthy" if is_healthy else "unreachable",
+            "mode": "http_bridge",
+            "api_base_url": bridge.api_base_url,
+            "shared_db": shared_db_info,
+            "supported_platforms": platforms_list,
         })
 
-    from app.collectors.media_crawler.bridge import MediaCrawlerBridge
-    bridge = MediaCrawlerBridge()
-    is_healthy = bridge.health_check()
-
-    return success_response({
-        "status": "healthy" if is_healthy else "unreachable",
-        "mode": "http_bridge",
-        "api_base_url": bridge.api_base_url,
-        "shared_db": shared_db_info,
-        "supported_platforms": [
-            {"value": p, "label": PLATFORM_LABELS.get(p, p)}
-            for p in sorted(SUPPORTED_PLATFORMS)
-        ],
-    })
+    _mc_health_cache["result"] = result
+    _mc_health_cache["expires_at"] = now + timedelta(seconds=30)
+    return result

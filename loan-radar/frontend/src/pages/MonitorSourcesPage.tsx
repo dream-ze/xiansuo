@@ -30,18 +30,18 @@ const SOURCE_TYPE_OPTIONS = [
 
 const COLLECTOR_TYPE_OPTIONS = [
   { label: "media_crawler：多平台采集（小红书/抖音/知乎）", value: "media_crawler" },
-  { label: "mock：演示采集模式（无需 MediaCrawler）", value: "mock" },
+  { label: "xhs_sdk：小红书 SDK 直连采集", value: "xhs_sdk" },
 ];
 
 export const SOURCE_ALLOWED_COLLECTOR_TYPES: Record<string, string[]> = {
-  keyword: ["media_crawler", "mock"],
-  competitor_account: ["media_crawler", "mock"],
-  manual_post: ["media_crawler", "mock"],
-  hot_post_rule: ["media_crawler", "mock"],
+  keyword: ["media_crawler", "xhs_sdk"],
+  competitor_account: ["media_crawler"],
+  manual_post: ["media_crawler", "xhs_sdk"],
+  hot_post_rule: ["media_crawler"],
 };
 
 export function getAllowedCollectorTypesBySourceType(sourceType: string): string[] {
-  return SOURCE_ALLOWED_COLLECTOR_TYPES[sourceType] ?? ["mock"];
+  return SOURCE_ALLOWED_COLLECTOR_TYPES[sourceType] ?? ["media_crawler"];
 }
 
 export function getDynamicFieldKeysByCollectorType(collectorType: string): string[] {
@@ -185,7 +185,6 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
-  const [mockAvailable, setMockAvailable] = useState(false);
 
   const allowedCollectorTypes = useMemo(() => {
     return getAllowedCollectorTypesBySourceType(createForm.source_type);
@@ -216,11 +215,9 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
     try {
       const result = await getCollectorsCapabilities();
       setCollectorCapabilities(result.collectors || {});
-      setMockAvailable("mock" in (result.collectors || {}));
     } catch {
       setCapabilityError("采集器能力加载失败");
       setCollectorCapabilities({});
-      setMockAvailable(false);
     } finally {
       setCapabilityLoading(false);
     }
@@ -238,7 +235,7 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
     if (!allowedCollectorTypes.includes(createForm.collector_type)) {
       setCreateForm((current) => ({
         ...current,
-        collector_type: allowedCollectorTypes[0] ?? "mock",
+        collector_type: allowedCollectorTypes[0] ?? "media_crawler",
       }));
     }
   }, [allowedCollectorTypes, createForm.collector_type]);
@@ -437,14 +434,8 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
           · <strong>内嵌模式</strong>：设置环境变量 <code>MEDIA_CRAWLER_HOME</code> 指向 MediaCrawler 目录，无需单独启动服务<br/>
           · <strong>HTTP 模式</strong>：启动 MediaCrawler API 服务（默认 http://127.0.0.1:8080）<br/>
           可通过 <code>/api/monitor-sources/media-crawler/health</code> 检查当前模式和服务状态。</p>
-          {mockAvailable && (
-            <p style={{ marginTop: "8px" }}>
-              🎭 <strong>演示模式已启用</strong>（ENABLE_MOCK_COLLECTOR=true）：可选择 mock 采集器，或点击下方按钮一键生成演示数据。
-            </p>
-          )}
         </div>
-        {mockAvailable && (
-          <div style={{ marginBottom: "12px" }}>
+        <div style={{ marginBottom: "12px" }}>
             <button
               type="button"
               onClick={() => void handleGenerateDemo()}
@@ -467,7 +458,6 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
               自动创建演示监控源并触发采集，生成帖子、评论、线索、日报等完整链路数据。所有演示数据标记 demo=true。
             </small>
           </div>
-        )}
         <form className="form-grid" onSubmit={handleCreate}>
           <label>
             <span>source_type</span>
@@ -706,7 +696,7 @@ export default function MonitorSourcesPage({ embedded = false }: { embedded?: bo
                       <td>{item.platform}</td>
                       <td>{item.name}</td>
                       <td className="cell-break">{item.value}</td>
-                      <td>{typeof item.config === "object" && item.config && "collector_type" in item.config ? String((item.config as Record<string, unknown>).collector_type) : "mock"}</td>
+                      <td>{typeof item.config === "object" && item.config && "collector_type" in item.config ? String((item.config as Record<string, unknown>).collector_type) : "media_crawler"}</td>
                       <td>{typeof item.config === "object" && item.config && "time_range" in item.config ? String((item.config as Record<string, unknown>).time_range) : "-"}</td>
                       <td>{item.enabled ? "启用" : "停用"}</td>
                       <td>

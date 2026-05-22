@@ -27,9 +27,31 @@ from app.schemas.common import paginated
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 
 
+class NoteInput(BaseModel):
+    note_id: str
+    note_url: str = ""
+    title: str = ""
+    content: str = ""
+    author_id: str = ""
+    author_name: str = ""
+    author_avatar: str = ""
+    cover_url: str = ""
+    likes: int = 0
+    collects: int = 0
+    comments: int = 0
+    shares: int = 0
+    type: str = ""
+    timestamp: int | str | None = None
+    image_urls: list[str] = []
+    video_url: str = ""
+    video_addr: str = ""
+    tags: list[str] = []
+    raw: dict[str, Any] = {}
+
+
 class BatchSaveNotesRequest(BaseModel):
     account_id: int
-    note_ids: list[str] = Field(min_length=1, max_length=100)
+    notes: list[NoteInput] = Field(min_length=1, max_length=100)
     fetch_comments: bool = False
 
 
@@ -89,7 +111,7 @@ def _get_latest_account_cookies(db: Session, account: PlatformAccount) -> str:
 
 def _get_owned_note(db: Session, current_user: User, note_id: int) -> Note:
     note = db.get(Note, note_id)
-    if note is None or note.user_id != current_user.id:
+    if note is None or (note.user_id is not None and note.user_id != current_user.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
     return note
 
@@ -104,7 +126,7 @@ def list_notes(
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ):
-    statement = select(Note).where(Note.user_id == current_user.id)
+    statement = select(Note).where((Note.user_id == current_user.id) | (Note.user_id.is_(None)))
     if platform:
         statement = statement.where(Note.platform == platform)
     if keyword:
@@ -142,47 +164,57 @@ def batch_save_notes(
     db: Session = Depends(get_db),
 ):
     account = _get_owned_account(db, current_user, payload.account_id)
-    cookies_text = _get_latest_account_cookies(db, account)
-    adapter = XhsPcApiAdapter(cookies_text)
-
+    saved_notes: list[dict[str, Any]] = []
     saved_count = 0
-    for external_note_id in payload.note_ids:
+
+    for note_input in payload.notes:
         existing = db.scalar(
             select(Note).where(
                 Note.user_id == current_user.id,
                 Note.platform == account.platform,
-                Note.note_id == external_note_id,
+                Note.note_id == note_input.note_id,
             )
         )
         if existing is not None:
+            saved_notes.append(_serialize_note(existing, include_raw=True))
             continue
         try:
-            note_data = adapter.get_note_detail(external_note_id)
-            if not note_data:
-                continue
+            raw = note_input.raw if note_input.raw else {}
             note = Note(
                 user_id=current_user.id,
                 platform_account_id=account.id,
                 platform=account.platform,
-                note_id=external_note_id,
-                title=note_data.get("title", ""),
-                content=note_data.get("desc", note_data.get("content", "")),
-                author_name=note_data.get("nickname", note_data.get("author_name", "")),
-                raw_json=note_data,
+                note_id=note_input.note_id,
+                title=note_input.title or raw.get("title", ""),
+                content=note_input.content or raw.get("desc", raw.get("content", "")),
+                author_name=note_input.author_name or raw.get("nickname", raw.get("author_name", "")),
+                raw_json=raw or None,
             )
             db.add(note)
             db.flush()
-            for idx, image_item in enumerate(note_data.get("image_list", [])):
-                url = image_item.get("url_default") or image_item.get("url") or image_item.get("info_list", [{}])[-1].get("url", "")
-                if url:
-                    db.add(NoteAsset(note_id=note.id, asset_type="image", url=url, sort_order=idx))
-            if note_data.get("video"):
-                video_url = note_data["video"].get("media", {}).get("stream", [{}])[-1].get("master_url", "")
-                if video_url:
-                    db.add(NoteAsset(note_id=note.id, asset_type="video", url=video_url, sort_order=0))
+
+            image_urls = note_input.image_urls or []
+            if image_urls:
+                for idx, img_url in enumerate(image_urls):
+                    if img_url:
+                        db.add(NoteAsset(note_id=note.id, asset_type="image", url=img_url, sort_order=idx))
+            else:
+                for idx, image_item in enumerate(raw.get("image_list", [])):
+                    url = image_item.get("url_default") or image_item.get("url") or (image_item.get("info_list", [{}])[-1].get("url", "") if image_item.get("info_list") else "")
+                    if url:
+                        db.add(NoteAsset(note_id=note.id, asset_type="image", url=url, sort_order=idx))
+
+            video_url = note_input.video_url or note_input.video_addr
+            if not video_url and raw.get("video"):
+                video_url = raw["video"].get("media", {}).get("stream", [{}])[-1].get("master_url", "")
+            if video_url:
+                db.add(NoteAsset(note_id=note.id, asset_type="video", url=video_url, sort_order=0))
+
             if payload.fetch_comments:
                 try:
-                    comments_data = adapter.get_note_comments(external_note_id)
+                    cookies_text = _get_latest_account_cookies(db, account)
+                    adapter = XhsPcApiAdapter(cookies_text)
+                    comments_data = adapter.get_note_comments(note_input.note_id)
                     for comment_item in comments_data:
                         db.add(
                             NoteComment(
@@ -198,12 +230,14 @@ def batch_save_notes(
                         )
                 except Exception:
                     pass
+
             saved_count += 1
+            saved_notes.append(_serialize_note(note, include_raw=True))
         except Exception:
             continue
 
     db.commit()
-    return {"saved_count": saved_count, "total_requested": len(payload.note_ids)}
+    return {"saved_count": saved_count, "total_requested": len(payload.notes), "items": saved_notes}
 
 
 @router.post("/{note_db_id}/tags")

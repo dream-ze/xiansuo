@@ -349,6 +349,13 @@ export function convertPostsToNotes(payload: { post_ids: number[]; platform_acco
   });
 }
 
+export function checkPostsSaved(payload: { post_ids: number[] }) {
+  return requestJson<{ saved_post_ids: number[] }>("/api/content-pools/check-saved", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getCookieStatus() {
   return requestJson<CookieStatusResponse>("/api/accounts/cookie-status");
 }

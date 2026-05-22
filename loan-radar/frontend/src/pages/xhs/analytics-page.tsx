@@ -123,17 +123,31 @@ export function XhsAnalyticsPage() {
     try {
       const [overviewResult, topResult, topicsResult, commentsResult] =
         await Promise.all([
-          fetchXhsOverview(),
-          fetchXhsTopContent(),
-          fetchXhsHotTopics(),
-          fetchXhsCommentInsights(),
+          fetchXhsOverview().catch((e) => {
+            if (e.message?.includes("登录")) throw e;
+            return null;
+          }),
+          fetchXhsTopContent().catch((e) => {
+            if (e.message?.includes("登录")) throw e;
+            return null;
+          }),
+          fetchXhsHotTopics().catch((e) => {
+            if (e.message?.includes("登录")) throw e;
+            return null;
+          }),
+          fetchXhsCommentInsights().catch((e) => {
+            if (e.message?.includes("登录")) throw e;
+            return null;
+          }),
         ]);
-      setOverview(overviewResult);
-      setTopContent(topResult.items);
-      setHotTopics(topicsResult.items);
-      setCommentInsights(commentsResult);
+      if (overviewResult) setOverview(overviewResult);
+      if (topResult) setTopContent(topResult.items);
+      if (topicsResult) setHotTopics(topicsResult.items);
+      if (commentsResult) setCommentInsights(commentsResult);
+      if (!overviewResult && !topResult && !topicsResult && !commentsResult) {
+        setError("数据洞察加载失败，请检查后端服务是否启动。");
+      }
     } catch {
-      setError("数据洞察加载失败。");
     } finally {
       setIsLoading(false);
     }
@@ -263,7 +277,7 @@ export function XhsAnalyticsPage() {
                     <span>高潜内容</span>
                   </Space>
                 }
-                extra={<Link to="/platforms/xhs/library">进入内容库</Link>}
+                extra={<Link to="/xhs/library">进入内容库</Link>}
                 style={{ background: "#FFFFFF", borderColor: "#E8E8E8", height: "100%" }}
                 styles={{ body: { padding: "12px 16px" } }}
               >

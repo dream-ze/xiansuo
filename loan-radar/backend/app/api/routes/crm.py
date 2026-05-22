@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/crm", tags=["crm"], dependencies=[Depends(requir
 
 
 def not_found_response() -> JSONResponse:
-    return JSONResponse(status_code=404, content=error_response("customer not found"))
+    return JSONResponse(status_code=404, content=error_response("客户未找到"))
 
 
 def validation_error_response(message: str) -> JSONResponse:

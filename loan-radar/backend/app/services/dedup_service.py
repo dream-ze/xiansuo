@@ -162,7 +162,7 @@ def batch_dedup_posts(
 
         new_posts.append(collected)
 
-    return new_posts, updated_posts, dup_post_ids, dup_count + len(dup_post_ids) - updated_count, updated_count
+    return new_posts, updated_posts, dup_post_ids, len(dup_post_ids), updated_count
 
 
 def batch_dedup_comments(

@@ -8,9 +8,11 @@ import sys
 import time
 from typing import Any
 
+import os
+
 import requests
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.getenv("SMOKE_BASE_URL", "http://127.0.0.1:8001")
 TIMEOUT = 10
 
 passed = 0

@@ -54,7 +54,7 @@ export function XhsDashboard() {
             <Link to="/">
               <Button>线索雷达驾驶舱</Button>
             </Link>
-            <Link to="/platforms/xhs/discovery">
+            <Link to="/xhs/discovery">
               <Button type="primary" icon={<DashboardOutlined />}>
                 开始发现
               </Button>
@@ -81,7 +81,7 @@ export function XhsDashboard() {
         <Col xs={24} md={16}>
           <Card
             title="高潜话题"
-            extra={<Link to="/platforms/xhs/analytics">查看洞察</Link>}
+            extra={<Link to="/xhs/analytics">查看洞察</Link>}
             style={{ background: "#FFFFFF", borderColor: "#E8E8E8" }}
           >
             {overview.hot_topics.length === 0 ? (

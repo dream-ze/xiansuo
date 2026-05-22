@@ -1,0 +1,154 @@
+{
+  "name": "loan-radar",
+  "version": "1.0.0",
+  "description": "助贷线索雷达",
+  "author": "LoanRadar Team",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && electron dist/main.js",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dev": "tsc && electron dist/main.js"
+  },
+  "build": {
+    "appId": "com.loanradar.app",
+    "productName": "助贷线索雷达",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "electron/assets"
+      },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!__pycache__",
+          "!*.pyc",
+          "!.env",
+          "!*.log",
+          "!storage",
+          "!reports",
+          "!.venv",
+          "!node_modules",
+          "!tests",
+          "!scripts",
+          "!alembic/versions/*.pyc"
+        ]
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "../mediacrawler",
+        "to": "mediacrawler",
+        "filter": [
+          "**/*",
+          "!__pycache__",
+          "!*.pyc",
+          "!.env",
+          "!.venv",
+          "!.git",
+          "!browser_data",
+          "!data",
+          "!test",
+          "!tests",
+          "!docs",
+          "!.github",
+          "!api/webui",
+          "!README.md",
+          "!README_en.md",
+          "!README_es.md",
+          "!LICENSE",
+          "!Dockerfile",
+          "!recv_sms.py"
+        ]
+      },
+      {
+        "from": "../apis",
+        "to": "apis",
+        "filter": [
+          "**/*",
+          "!__pycache__",
+          "!*.pyc"
+        ]
+      },
+      {
+        "from": "../xhs_utils",
+        "to": "xhs_utils",
+        "filter": [
+          "**/*",
+          "!__pycache__",
+          "!*.pyc"
+        ]
+      },
+      {
+        "from": "resources/tools",
+        "to": "tools",
+        "filter": [
+          "**/*",
+          "!**/__pycache__",
+          "!**/*.pyc",
+          "!**/*.pyo",
+          "!**/pip/_vendor/cache",
+          "!**/pip/_internal/cache",
+          "!**/*.dist-info/RECORD",
+          "!**/*.dist-info/INSTALLER",
+          "!**/*.dist-info/REQUESTED",
+          "!**/*.dist-info/direct_url.json"
+        ]
+      },
+      {
+        "from": "../static",
+        "to": "static"
+      },
+      {
+        "from": "../scripts",
+        "to": "scripts",
+        "filter": [
+          "**/*",
+          "!__pycache__",
+          "!*.pyc"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "installerLanguages": ["zh_CN"],
+      "language": "2052",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "助贷线索雷达",
+      "runAfterFinish": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0",
+    "typescript": "^5.6.0"
+  }
+}

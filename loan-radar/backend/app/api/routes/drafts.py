@@ -25,6 +25,7 @@ class DraftCreateRequest(BaseModel):
     title: str = ""
     body: str = ""
     intent: str = Field(default="publish", max_length=32)
+    custom_topic: Optional[str] = None
 
 
 class DraftUpdateRequest(BaseModel):
@@ -154,7 +155,7 @@ def create_draft(
     draft = AiDraft(
         user_id=current_user.id,
         platform=payload.platform,
-        title=payload.title or (source_note.title if source_note else ""),
+        title=payload.title or (source_note.title if source_note else "") or (payload.custom_topic or ""),
         body=payload.body or (source_note.content if source_note else ""),
         content=payload.body or (source_note.content if source_note else ""),
         tags=tags,

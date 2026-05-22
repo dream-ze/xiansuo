@@ -1,10 +1,11 @@
-import { CloudDownloadOutlined, LinkOutlined, StarOutlined } from "@ant-design/icons";
+import { CloudDownloadOutlined, EditOutlined, LinkOutlined, StarFilled, StarOutlined } from "@ant-design/icons";
 import { Button, Card, Col, Drawer, Row, Space, Table, Tag, Typography, message } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { convertPostsToNotes, getLeads, getPosts, type Lead, type Post, type PostQueryParams } from "../api";
+import { convertPostsToNotes, checkPostsSaved, getLeads, getPosts, type Lead, type Post, type PostQueryParams } from "../api";
+import { createDraftFromNote } from "../api/xhs-api";
 import { showToast } from "../components/ToastContainer";
 
 const { Text, Paragraph } = Typography;
@@ -72,11 +73,15 @@ export default function PostPoolPage() {
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [converting, setConverting] = useState(false);
+  const [generatingDraft, setGeneratingDraft] = useState(false);
 
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLeads, setDetailLeads] = useState<Lead[]>([]);
   const [detailLeadsLoading, setDetailLeadsLoading] = useState(false);
+  const [detailSaved, setDetailSaved] = useState(false);
+
+  const [savedPostIds, setSavedPostIds] = useState<Set<number>>(new Set());
 
   const [statTotals, setStatTotals] = useState({ all: 0, hot: 0, withLeads: 0 });
 
@@ -95,6 +100,17 @@ export default function PostPoolPage() {
       setItems(result.items);
       setTotal(result.total);
       setPage(result.page);
+
+      if (result.items.length > 0) {
+        try {
+          const checkResult = await checkPostsSaved({ post_ids: result.items.map((p) => p.id) });
+          setSavedPostIds(new Set(checkResult.saved_post_ids));
+        } catch {
+          setSavedPostIds(new Set());
+        }
+      } else {
+        setSavedPostIds(new Set());
+      }
 
       const allResult = await getPosts({ ...apiParams, page: 1, page_size: 1 });
       const hotResult = await getPosts({ ...apiParams, is_hot: true, page: 1, page_size: 1 });
@@ -131,6 +147,7 @@ export default function PostPoolPage() {
   async function handleViewDetail(post: Post) {
     setDetailPost(post);
     setDetailOpen(true);
+    setDetailSaved(savedPostIds.has(post.id));
     setDetailLeadsLoading(true);
     try {
       const result = await getLeads({ source_post_id: post.id, page: 1, page_size: 50 });
@@ -146,17 +163,60 @@ export default function PostPoolPage() {
     if (selectedRowKeys.length === 0) return;
     setConverting(true);
     try {
-      const result = await convertPostsToNotes({ post_ids: selectedRowKeys.map(Number) });
-      showToast(
-        "success",
-        "收藏到内容库完成",
-        `成功 ${result.converted_count} 条，跳过 ${result.skipped_count} 条，失败 ${result.failed_count} 条`,
-      );
-      setSelectedRowKeys([]);
+      const postIds = selectedRowKeys.map(Number);
+      const result = await convertPostsToNotes({ post_ids: postIds });
+      const newSaved = new Set(savedPostIds);
+      postIds.forEach((id) => newSaved.add(id));
+      setSavedPostIds(newSaved);
+      if (result.converted_count > 0) {
+        showToast(
+          "success",
+          "收藏完成",
+          `成功收藏 ${result.converted_count} 条到内容库，跳过 ${result.skipped_count} 条（已存在）`,
+        );
+        setSelectedRowKeys([]);
+      } else if (result.skipped_count > 0) {
+        showToast("info", "全部已收藏", `${result.skipped_count} 条帖子均已在内容库中，无需重复收藏`);
+        setSelectedRowKeys([]);
+      } else {
+        showToast("error", "收藏失败", `失败 ${result.failed_count} 条`);
+      }
     } catch (err) {
       showToast("error", "收藏到内容库失败", err instanceof Error ? err.message : "未知错误");
     } finally {
       setConverting(false);
+    }
+  }
+
+  async function handleGenerateDraft() {
+    if (selectedRowKeys.length === 0) return;
+    setGeneratingDraft(true);
+    try {
+      const convertResult = await convertPostsToNotes({ post_ids: selectedRowKeys.map(Number) });
+      if (convertResult.converted_count === 0) {
+        showToast("warning", "生成草稿", "没有可用的帖子转换为内容库笔记");
+        return;
+      }
+      const noteIds = convertResult.details
+        .filter((d) => d.status === "converted" && (d as Record<string, unknown>).note_id)
+        .map((d) => (d as Record<string, unknown>).note_id as number);
+      if (noteIds.length === 0) {
+        showToast("warning", "生成草稿", "内容库中已存在这些帖子，请直接从内容库生成草稿");
+        return;
+      }
+      let successCount = 0;
+      for (const noteId of noteIds) {
+        try {
+          await createDraftFromNote({ platform: "xhs", source_note_id: noteId, intent: "publish" });
+          successCount++;
+        } catch { /* skip individual failures */ }
+      }
+      showToast("success", "生成小红书草稿", `成功生成 ${successCount} 篇草稿，可在草稿工坊查看`);
+      setSelectedRowKeys([]);
+    } catch (err) {
+      showToast("error", "生成草稿失败", err instanceof Error ? err.message : "未知错误");
+    } finally {
+      setGeneratingDraft(false);
     }
   }
 
@@ -184,9 +244,14 @@ export default function PostPoolPage() {
       dataIndex: "title",
       ellipsis: true,
       render: (title: string, record: Post) => (
-        <Text ellipsis style={{ maxWidth: 300, fontSize: 13 }}>
-          {title || record.content || "-"}
-        </Text>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {savedPostIds.has(record.id) && (
+            <StarFilled style={{ color: "#faad14", fontSize: 12, flexShrink: 0 }} />
+          )}
+          <Text ellipsis style={{ maxWidth: 300, fontSize: 13 }}>
+            {title || record.content || "-"}
+          </Text>
+        </span>
       ),
     },
     {
@@ -275,15 +340,25 @@ export default function PostPoolPage() {
         </div>
         <Space>
           {selectedRowKeys.length > 0 && (
-            <Button
-              type="primary"
-              icon={<StarOutlined />}
-              onClick={handleSaveToLibrary}
-              loading={converting}
-              size="small"
-            >
-              收藏到内容库 ({selectedRowKeys.length})
-            </Button>
+            <>
+              <Button
+                type="primary"
+                icon={<StarOutlined />}
+                onClick={handleSaveToLibrary}
+                loading={converting}
+                size="small"
+              >
+                收藏到内容库 ({selectedRowKeys.length})
+              </Button>
+              <Button
+                icon={<EditOutlined />}
+                onClick={handleGenerateDraft}
+                loading={generatingDraft}
+                size="small"
+              >
+                一键生成小红书草稿 ({selectedRowKeys.length})
+              </Button>
+            </>
           )}
           <Button
             icon={<CloudDownloadOutlined />}
@@ -583,22 +658,37 @@ export default function PostPoolPage() {
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Button
-                type="primary"
-                icon={<StarOutlined />}
+                type={detailSaved ? "default" : "primary"}
+                icon={detailSaved ? <StarFilled /> : <StarOutlined />}
+                style={detailSaved ? { color: "#faad14", borderColor: "#faad14" } : undefined}
                 onClick={async () => {
+                  if (detailSaved) {
+                    showToast("info", "已收藏", "该帖子已在内容库中，无需重复收藏");
+                    return;
+                  }
                   try {
                     const result = await convertPostsToNotes({ post_ids: [detailPost.id] });
-                    showToast(
-                      "success",
-                      "收藏到内容库",
-                      `成功 ${result.converted_count} 条，跳过 ${result.skipped_count} 条`,
-                    );
+                    if (result.converted_count > 0) {
+                      setDetailSaved(true);
+                      setSavedPostIds((prev) => new Set(prev).add(detailPost.id));
+                      showToast(
+                        "success",
+                        "收藏成功",
+                        `已收藏到内容库，同时导入 ${result.details.find(d => d.status === "converted")?.comments_converted ?? 0} 条评论`,
+                      );
+                    } else if (result.skipped_count > 0) {
+                      setDetailSaved(true);
+                      setSavedPostIds((prev) => new Set(prev).add(detailPost.id));
+                      showToast("info", "已收藏过", "该帖子已在内容库中，无需重复收藏");
+                    } else if (result.failed_count > 0) {
+                      showToast("error", "收藏失败", result.details.find(d => d.status === "failed")?.reason || "未知错误");
+                    }
                   } catch (err) {
-                    message.error(err instanceof Error ? err.message : "收藏失败");
+                    showToast("error", "收藏失败", err instanceof Error ? err.message : "未知错误");
                   }
                 }}
               >
-                收藏到内容库
+                {detailSaved ? "已收藏" : "收藏到内容库"}
               </Button>
               <Button onClick={() => navigate(`/leads?source_post_id=${detailPost.id}`)}>
                 查看关联线索

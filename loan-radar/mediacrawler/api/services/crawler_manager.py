@@ -270,10 +270,11 @@ class CrawlerManager:
                 exit_code = self.process.returncode if self.process else -1
                 if exit_code == 0:
                     entry = self._create_log_entry("Crawler completed successfully", "success")
+                    self.status = "idle"
                 else:
-                    entry = self._create_log_entry(f"Crawler exited with code: {exit_code}", "warning")
+                    entry = self._create_log_entry(f"Crawler exited with code: {exit_code}", "error")
+                    self.status = "error"
                 await self._push_log(entry)
-                self.status = "idle"
 
         except asyncio.CancelledError:
             pass

@@ -57,7 +57,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-}
       SCHEDULER_ENABLED: "true"
       SCHEDULER_INTERVAL_SECONDS: 60
-      FRONTEND_SERVE_STATIC: "true"
+      FRONTEND_SERVE_STATIC: "false"
       FRONTEND_BUILD_DIR: ./frontend/dist
       CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:8001
     volumes:

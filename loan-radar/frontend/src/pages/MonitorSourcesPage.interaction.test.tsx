@@ -19,7 +19,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
     (client.getCollectorsCapabilities as any).mockResolvedValue({
       collectors: {
         media_crawler: { name: "MediaCrawler 多平台采集器", status: "ready", supports: ["keyword", "competitor_account", "manual_post", "hot_post_rule"], description: "" },
-        mock: { name: "演示采集器（Mock）", status: "ready", supports: ["keyword", "competitor_account", "manual_post", "hot_post_rule"], description: "" },
+        xhs_sdk: { name: "小红书 SDK 直连采集", status: "ready", supports: ["keyword", "competitor_account", "manual_post", "hot_post_rule"], description: "" },
       },
     });
   });
@@ -36,7 +36,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       expect(collectorSelect).toBeInTheDocument();
     });
 
-    it("keyword source_type 时，collector_type 显示 media_crawler 和 mock", async () => {
+    it("keyword source_type 时，collector_type 显示 media_crawler 和 xhs_sdk", async () => {
       renderWithRouter(<MonitorSourcesPage />);
 
       await waitFor(() => {
@@ -47,10 +47,10 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       const options = Array.from(collectorSelect.options).map((o) => o.value);
 
       expect(options).toContain("media_crawler");
-      expect(options).toContain("mock");
+      expect(options).toContain("xhs_sdk");
     });
 
-    it("切换 source_type 到 manual_post 时，collector_type 仍包含 media_crawler 和 mock", async () => {
+    it("切换 source_type 到 manual_post 时，collector_type 仍包含 media_crawler 和 xhs_sdk", async () => {
       const user = userEvent.setup();
       renderWithRouter(<MonitorSourcesPage />);
 
@@ -66,7 +66,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
         const options = Array.from(collectorSelect.options).map((o) => o.value);
 
         expect(options).toContain("media_crawler");
-        expect(options).toContain("mock");
+        expect(options).toContain("xhs_sdk");
       });
     });
   });
@@ -87,7 +87,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       }, { timeout: 5000 });
     });
 
-    it("选择 mock 时，不显示 login_type 和 cookies 字段", async () => {
+    it("选择 xhs_sdk 时，不显示 login_type 和 cookies 字段", async () => {
       const user = userEvent.setup();
       renderWithRouter(<MonitorSourcesPage />);
 
@@ -96,7 +96,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       });
 
       const collectorSelect = screen.getByDisplayValue(/media_crawler/);
-      await user.selectOptions(collectorSelect, "mock");
+      await user.selectOptions(collectorSelect, "xhs_sdk");
 
       await waitFor(() => {
         expect(screen.queryByText(/login_type/)).not.toBeInTheDocument();
@@ -105,7 +105,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
   });
 
   describe("演示模式", () => {
-    it("mock 可用时显示一键生成演示数据按钮", async () => {
+    it("显示一键生成演示数据按钮", async () => {
       renderWithRouter(<MonitorSourcesPage />);
 
       await waitFor(() => {
@@ -116,7 +116,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
       expect(demoButton).toBeInTheDocument();
     });
 
-    it("mock 不可用时不显示一键生成演示数据按钮", async () => {
+    it("仅 media_crawler 可用时仍显示一键生成演示数据按钮", async () => {
       (client.getCollectorsCapabilities as any).mockResolvedValue({
         collectors: {
           media_crawler: { name: "MediaCrawler 多平台采集器", status: "ready", supports: [], description: "" },
@@ -129,7 +129,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
         expect(screen.getByText(/MediaCrawler 多平台采集器/)).toBeInTheDocument();
       });
 
-      expect(screen.queryByRole("button", { name: /一键生成演示数据/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /一键生成演示数据/ })).toBeInTheDocument();
     });
   });
 
@@ -147,7 +147,7 @@ describe("MonitorSourcesPage 组件交互测试", () => {
 
       await waitFor(() => {
         expect(screen.getByText("MediaCrawler 多平台采集器")).toBeInTheDocument();
-        expect(screen.getByText("演示采集器（Mock）")).toBeInTheDocument();
+        expect(screen.getByText("小红书 SDK 直连采集")).toBeInTheDocument();
       });
     });
 

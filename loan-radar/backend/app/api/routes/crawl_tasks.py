@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/crawl-tasks", tags=["crawl-tasks"], dependencies
 def not_found_response() -> JSONResponse:
     return JSONResponse(
         status_code=404,
-        content=error_response("crawl task not found"),
+        content=error_response("采集任务未找到"),
     )
 
 
@@ -101,7 +101,7 @@ def rerun_crawl_task_endpoint(
         return not_found_response()
 
     if crawl_task.status not in ("failed", "success", "retrying"):
-        return validation_error_response("only failed, completed or retrying crawl tasks can be rerun")
+        return validation_error_response("只有失败、已完成或重试中的任务可以重新执行")
 
     crawl_task.status = "pending"
     crawl_task.progress = "queued"

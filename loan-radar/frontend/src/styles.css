@@ -223,6 +223,11 @@ th {
   color: #374151;
 }
 
+.state-info {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
 .state-text {
   color: #6b7280;
 }

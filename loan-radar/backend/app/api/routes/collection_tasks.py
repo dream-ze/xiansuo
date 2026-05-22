@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/collection/tasks", tags=["collection-tasks"], de
 
 
 def not_found_response() -> JSONResponse:
-    return JSONResponse(status_code=404, content=error_response("collection task not found"))
+    return JSONResponse(status_code=404, content=error_response("采集任务未找到"))
 
 
 @router.post("")

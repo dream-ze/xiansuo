@@ -2,13 +2,15 @@ import logging
 import time
 import traceback
 from collections import defaultdict
+from pathlib import Path
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
 
 from app.api.routes.ai import router as ai_router
 from app.api.routes.accounts import router as accounts_router
@@ -98,14 +100,14 @@ async def rate_limit_middleware(request: Request, call_next):
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "message": exc.detail}, headers=exc.headers)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception: %s\n%s", exc, traceback.format_exc())
-    detail = str(exc) if not settings.is_production else "Internal server error"
-    return JSONResponse(status_code=500, content={"detail": detail})
+    detail = str(exc) if not settings.is_production else "服务器内部错误，请稍后重试"
+    return JSONResponse(status_code=500, content={"detail": detail, "message": detail})
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -148,3 +150,27 @@ app.include_router(video_studio_router)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+if settings.frontend_serve_static:
+    _frontend_dir = Path(settings.frontend_build_dir)
+    if not _frontend_dir.is_absolute():
+        _backend_dir = Path(__file__).resolve().parents[1]
+        _frontend_dir = (_backend_dir / settings.frontend_build_dir).resolve()
+
+    if _frontend_dir.is_dir():
+        _assets_dir = _frontend_dir / "assets"
+        if _assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="frontend-assets")
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path == "health":
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
+            file_path = _frontend_dir / full_path
+            if file_path.is_file():
+                return FileResponse(str(file_path))
+            return FileResponse(str(_frontend_dir / "index.html"))
+    else:
+        logger.warning("FRONTEND_SERVE_STATIC=true but directory not found: %s", _frontend_dir)

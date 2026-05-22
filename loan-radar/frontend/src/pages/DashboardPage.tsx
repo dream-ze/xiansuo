@@ -166,7 +166,12 @@ export default function DashboardPage() {
             const prev = notified.get(task.id);
             if (prev && prev !== task.status) {
               if (task.status === "success") {
-                message.success(`任务 #${task.id} 采集完成：${task.post_count} 帖子、${task.lead_count} 线索`);
+                const collected = task.collected_posts ?? task.post_count;
+                const isAllDup = collected > 0 && task.post_count === 0;
+                const msg = isAllDup
+                  ? `任务 #${task.id} 采集完成：采集到 ${collected} 帖子（均为已存在数据）`
+                  : `任务 #${task.id} 采集完成：新增 ${task.post_count} 帖子、${task.lead_count} 线索`;
+                message.success(msg);
               } else if (task.status === "failed") {
                 message.error(`任务 #${task.id} 采集失败`);
               }
@@ -282,19 +287,19 @@ export default function DashboardPage() {
         <>
           <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
             <Col xs={12} sm={8} md={4}>
-              <StatCard title="监控源" value={stats.source_count} suffix="个" icon={<RadarChartOutlined />} />
+              <StatCard title="监控源" value={stats.source_count} suffix="个" icon={<RadarChartOutlined />} onClick={() => navigate("/collection")} />
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <StatCard title="采集任务" value={displayTaskCount} suffix="个" icon={<PlayCircleOutlined />} />
+              <StatCard title="采集任务" value={displayTaskCount} suffix="个" icon={<PlayCircleOutlined />} onClick={() => navigate("/tasks")} />
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <StatCard title="帖子" value={displayPostCount} suffix="条" icon={<FileSearchOutlined />} />
+              <StatCard title="帖子" value={displayPostCount} suffix="条" icon={<FileSearchOutlined />} onClick={() => navigate("/posts")} />
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <StatCard title="评论" value={displayCommentCount} suffix="条" />
+              <StatCard title="评论" value={displayCommentCount} suffix="条" onClick={() => navigate("/comments")} />
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <StatCard title="线索" value={displayLeadCount} suffix="条" icon={<StarOutlined />} accent="#2F54EB" />
+              <StatCard title="线索" value={displayLeadCount} suffix="条" icon={<StarOutlined />} accent="#2F54EB" onClick={() => navigate("/leads")} />
             </Col>
             <Col xs={12} sm={8} md={4}>
               <StatCard title="A级线索" value={displayALeadCount} suffix="条" icon={<ExclamationCircleOutlined />} accent="#CF1322" onClick={() => navigate("/leads?lead_level=A")} />
@@ -303,10 +308,10 @@ export default function DashboardPage() {
 
           <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
             <Col xs={12} sm={6}>
-              <StatCard title="今日转入CRM" value={stats.crm_today_new} suffix="个" icon={<TeamOutlined />} accent="#2F54EB" />
+              <StatCard title="今日转入CRM" value={stats.crm_today_new} suffix="个" icon={<TeamOutlined />} accent="#2F54EB" onClick={() => navigate("/crm")} />
             </Col>
             <Col xs={12} sm={6}>
-              <StatCard title="今日待跟进" value={stats.crm_pending_follow} suffix="个" icon={<ClockCircleOutlined />} />
+              <StatCard title="今日待跟进" value={stats.crm_pending_follow} suffix="个" icon={<ClockCircleOutlined />} onClick={() => navigate("/crm?tab=follow-up&filter=today")} />
             </Col>
             <Col xs={12} sm={6}>
               <StatCard
@@ -315,21 +320,22 @@ export default function DashboardPage() {
                 suffix="个"
                 icon={<WarningOutlined />}
                 accent={stats.crm_overdue_follow > 0 ? "#CF1322" : undefined}
+                onClick={() => navigate("/crm?tab=follow-up&filter=overdue")}
               />
             </Col>
             <Col xs={12} sm={6}>
-              <StatCard title="已成交客户" value={stats.crm_converted} suffix="个" icon={<CheckCircleOutlined />} accent="#52C41A" />
+              <StatCard title="已成交客户" value={stats.crm_converted} suffix="个" icon={<CheckCircleOutlined />} accent="#52C41A" onClick={() => navigate("/crm?tab=customers&filter=converted")} />
             </Col>
           </Row>
 
           <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
             <Col xs={12} sm={6}>
-              <Link to="/xhs" style={{ textDecoration: "none" }}>
+              <Link to="/xhs/library" style={{ textDecoration: "none" }}>
                 <StatCard title="XHS 内容库" value={stats.xhs_notes_count} suffix="篇" icon={<BookOutlined />} accent="#FF2442" />
               </Link>
             </Col>
             <Col xs={12} sm={6}>
-              <Link to="/xhs" style={{ textDecoration: "none" }}>
+              <Link to="/xhs/library" style={{ textDecoration: "none" }}>
                 <StatCard title="今日入库笔记" value={stats.xhs_notes_today} suffix="篇" icon={<RiseOutlined />} />
               </Link>
             </Col>

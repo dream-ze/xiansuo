@@ -13,6 +13,22 @@ from app.models.lead import Lead
 from app.models.monitor_source import MonitorSource
 from app.models.pending_competitor import PendingCompetitorAccount
 from app.models.post import Post
+
+PLATFORM_URL_MAP = {
+    "xhs": {"base": "https://www.xiaohongshu.com", "post": "https://www.xiaohongshu.com/explore", "user": "https://www.xiaohongshu.com/user/profile"},
+    "douyin": {"base": "https://www.douyin.com", "post": "https://www.douyin.com/video", "user": "https://www.douyin.com/user"},
+    "zhihu": {"base": "https://www.zhihu.com", "post": "https://www.zhihu.com/question", "user": "https://www.zhihu.com/people"},
+}
+
+
+def _platform_post_url(platform: str, post_id: str) -> str:
+    m = PLATFORM_URL_MAP.get(platform, PLATFORM_URL_MAP["zhihu"])
+    return f"{m['post']}/{post_id}"
+
+
+def _platform_user_url(platform: str, user_id: str) -> str:
+    m = PLATFORM_URL_MAP.get(platform, PLATFORM_URL_MAP["zhihu"])
+    return f"{m['user']}/{user_id}"
 from app.services.daily_report_service import generate_daily_report
 from app.services.lead_scoring_service import LeadScoringService
 
@@ -25,21 +41,21 @@ MONITOR_SOURCES = [
         "platform": "xhs",
         "name": "演示 - 征信花了",
         "value": "征信花了",
-        "config": {"collector_type": "mock", "max_posts": 10, "enable_comments": True},
+        "config": {"collector_type": "media_crawler", "mode": "real", "max_posts": 10, "enable_comments": True},
     },
     {
         "source_type": "competitor_account",
         "platform": "douyin",
         "name": "演示 - 助贷顾问小王",
         "value": "助贷顾问小王",
-        "config": {"collector_type": "mock", "max_posts": 5, "enable_comments": True},
+        "config": {"collector_type": "media_crawler", "mode": "real", "max_posts": 5, "enable_comments": True},
     },
     {
         "source_type": "manual_post",
         "platform": "zhihu",
         "name": "演示 - 指定帖子",
-        "value": "https://demo.local/zhihu/posts/demo-manual-post",
-        "config": {"collector_type": "mock", "max_posts": 1, "enable_comments": True},
+        "value": "https://www.zhihu.com/question/demo-manual-post",
+        "config": {"collector_type": "media_crawler", "mode": "real", "max_posts": 1, "enable_comments": True},
     },
 ]
 
@@ -246,35 +262,35 @@ NON_DEMAND_COMMENTS = [
 COMPETITOR_ACCOUNTS = [
     {
         "account_name": "助贷顾问小王",
-        "profile_url": "https://demo.local/douyin/users/competitor-1",
+        "profile_url": "https://www.douyin.com/user/competitor-1",
         "platform": "douyin",
         "source_keyword": "征信花了",
         "discover_reason": "多次发布助贷相关内容，疑似同行推广账号",
     },
     {
         "account_name": "贷款规划师李姐",
-        "profile_url": "https://demo.local/douyin/users/competitor-2",
+        "profile_url": "https://www.douyin.com/user/competitor-2",
         "platform": "douyin",
         "source_keyword": "征信花了",
         "discover_reason": "评论区主动留联系方式推广贷款服务",
     },
     {
         "account_name": "信贷经理老张",
-        "profile_url": "https://demo.local/xhs/users/competitor-3",
+        "profile_url": "https://www.xiaohongshu.com/user/profile/competitor-3",
         "platform": "xhs",
         "source_keyword": "征信花了",
         "discover_reason": "发布大量贷款产品对比内容，疑似中介账号",
     },
     {
         "account_name": "金融小助手",
-        "profile_url": "https://demo.local/xhs/users/competitor-4",
+        "profile_url": "https://www.xiaohongshu.com/user/profile/competitor-4",
         "platform": "xhs",
         "source_keyword": "征信花了",
         "discover_reason": "频繁回复贷款咨询，引导私信，疑似获客账号",
     },
     {
         "account_name": "靠谱贷款推荐",
-        "profile_url": "https://demo.local/zhihu/users/competitor-5",
+        "profile_url": "https://www.zhihu.com/people/competitor-5",
         "platform": "zhihu",
         "source_keyword": "征信花了",
         "discover_reason": "知乎专栏持续发布贷款攻略，含推广信息",
@@ -310,7 +326,7 @@ def _clean_demo_data(db: Session) -> dict[str, int]:
     db.query(Comment).filter(Comment.raw_data["demo"].as_boolean().is_(True)).delete(synchronize_session=False)
     db.query(Post).filter(Post.raw_data["demo"].as_boolean().is_(True)).delete(synchronize_session=False)
     db.query(PendingCompetitorAccount).filter(
-        PendingCompetitorAccount.profile_url.like("https://demo.local/%")
+        PendingCompetitorAccount.profile_url.like("https://www.douyin.com/user/competitor-%")
     ).delete(synchronize_session=False)
     db.query(MonitorSource).filter(MonitorSource.name.like("演示 - %")).delete(synchronize_session=False)
     db.query(DailyReport).filter(
@@ -363,9 +379,9 @@ def _create_posts(db: Session, sources: dict[tuple[str, str], MonitorSource]) ->
             content_hash=_content_hash(tpl["content"]),
             title=tpl["title"],
             content=tpl["content"],
-            post_url=f"https://demo.local/{tpl['platform']}/posts/{post_id}",
+            post_url=_platform_post_url(tpl["platform"], post_id),
             author_name=tpl["author"],
-            author_profile_url=f"https://demo.local/{tpl['platform']}/users/author-{i + 1}",
+            author_profile_url=_platform_user_url(tpl["platform"], f"author-{i + 1}"),
             like_count=like_count,
             comment_count=5,
             collect_count=100 + i * 10 if is_hot else i * 2,
@@ -411,7 +427,7 @@ def _create_comments_and_leads(db: Session, posts: list[dict]) -> tuple[int, int
                 comment_id=comment_id,
                 content_hash=_content_hash(tpl["content"]),
                 user_name=user_name,
-                user_profile_url=f"https://demo.local/{post.platform}/users/commenter-d{demand_idx}",
+                user_profile_url=_platform_user_url(post.platform, f"commenter-d{demand_idx}"),
                 content=tpl["content"],
                 like_count=j % 10,
                 publish_time=datetime.now(timezone.utc) - timedelta(minutes=j * 5),
@@ -495,7 +511,7 @@ def _create_comments_and_leads(db: Session, posts: list[dict]) -> tuple[int, int
                 comment_id=comment_id,
                 content_hash=_content_hash(content),
                 user_name=user_name,
-                user_profile_url=f"https://demo.local/{post.platform}/users/commenter-n{non_demand_idx}",
+                user_profile_url=_platform_user_url(post.platform, f"commenter-n{non_demand_idx}"),
                 content=content,
                 like_count=j % 5,
                 publish_time=datetime.now(timezone.utc) - timedelta(minutes=j * 3),

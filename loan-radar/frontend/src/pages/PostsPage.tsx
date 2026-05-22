@@ -121,12 +121,19 @@ export default function PostsPage() {
     setConverting(true);
     try {
       const result = await convertPostsToNotes({ post_ids: Array.from(selectedIds) });
-      showToast(
-        "success",
-        "收藏到内容库完成",
-        `成功 ${result.converted_count} 条，跳过 ${result.skipped_count} 条，失败 ${result.failed_count} 条`,
-      );
-      setSelectedIds(new Set());
+      if (result.converted_count > 0) {
+        showToast(
+          "success",
+          "收藏完成",
+          `成功收藏 ${result.converted_count} 条到内容库，跳过 ${result.skipped_count} 条（已存在）`,
+        );
+        setSelectedIds(new Set());
+      } else if (result.skipped_count > 0) {
+        showToast("info", "全部已收藏", `${result.skipped_count} 条帖子均已在内容库中，无需重复收藏`);
+        setSelectedIds(new Set());
+      } else {
+        showToast("error", "收藏失败", `失败 ${result.failed_count} 条`);
+      }
     } catch (err) {
       showToast("error", "收藏到内容库失败", err instanceof Error ? err.message : "未知错误");
     } finally {

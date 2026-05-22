@@ -20,7 +20,7 @@ def analytics_overview(
     db: Session = Depends(get_db),
 ):
     user_id = current_user.id
-    saved_notes = db.scalar(select(func.count()).where(Note.user_id == user_id)) or 0
+    saved_notes = db.scalar(select(func.count()).where((Note.user_id == user_id) | (Note.user_id.is_(None)))) or 0
     comment_count = 0
     healthy_accounts = db.scalar(
         select(func.count()).where(

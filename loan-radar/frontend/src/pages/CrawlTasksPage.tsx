@@ -207,7 +207,12 @@ export default function CrawlTasksPage({ embedded = false }: { embedded?: boolea
           const prevStatus = prevStatusRef.current.get(task.id);
           if (prevStatus && prevStatus !== updated.status) {
             if (updated.status === "success") {
-              showToast("success", `任务 #${task.id} 采集完成`, `获得 ${updated.post_count} 帖子、${updated.lead_count} 线索`);
+              const collected = updated.collected_posts ?? updated.post_count;
+              const isAllDup = collected > 0 && updated.post_count === 0;
+              const msg = isAllDup
+                ? `采集到 ${collected} 帖子（均为已存在数据，${updated.duplicate_post_count} 条重复）`
+                : `新增 ${updated.post_count} 帖子、${updated.lead_count} 线索（共采集 ${collected} 帖）`;
+              showToast("success", `任务 #${task.id} 采集完成`, msg);
             } else if (updated.status === "failed") {
               showToast("error", `任务 #${task.id} 采集失败`, updated.error_message?.slice(0, 80) || "未知错误");
             } else if (updated.status === "retrying") {
@@ -507,8 +512,8 @@ export default function CrawlTasksPage({ embedded = false }: { embedded?: boolea
                         </span>
                         {isActive && <span className="task-spinner" />}
                       </td>
-                      <td>{task.post_count}</td>
-                      <td>{task.comment_count}</td>
+                      <td>{task.post_count}{task.collected_posts && task.collected_posts > task.post_count ? <span className="text-muted"> / {task.collected_posts}</span> : ""}</td>
+                      <td>{task.comment_count}{task.collected_comments && task.collected_comments > task.comment_count ? <span className="text-muted"> / {task.collected_comments}</span> : ""}</td>
                       <td><strong>{task.lead_count}</strong></td>
                       <td>{task.discovered_competitor_count || "-"}</td>
                       <td>
@@ -582,20 +587,24 @@ export default function CrawlTasksPage({ embedded = false }: { embedded?: boolea
                   <h3 className="task-detail-section-title">采集结果统计</h3>
                   <div className="task-result-stats">
                     <div className="task-result-stat">
+                      <span className="task-result-stat-value">{selectedTask.collected_posts ?? selectedTask.post_count}</span>
+                      <span className="task-result-stat-label">采集帖子</span>
+                    </div>
+                    <div className="task-result-stat">
                       <span className="task-result-stat-value">{selectedTask.post_count}</span>
-                      <span className="task-result-stat-label">帖子</span>
+                      <span className="task-result-stat-label">新增帖子</span>
+                    </div>
+                    <div className="task-result-stat">
+                      <span className="task-result-stat-value">{selectedTask.collected_comments ?? selectedTask.comment_count}</span>
+                      <span className="task-result-stat-label">采集评论</span>
                     </div>
                     <div className="task-result-stat">
                       <span className="task-result-stat-value">{selectedTask.comment_count}</span>
-                      <span className="task-result-stat-label">评论</span>
+                      <span className="task-result-stat-label">新增评论</span>
                     </div>
                     <div className="task-result-stat task-result-stat-highlight">
                       <span className="task-result-stat-value">{selectedTask.lead_count}</span>
                       <span className="task-result-stat-label">线索</span>
-                    </div>
-                    <div className="task-result-stat">
-                      <span className="task-result-stat-value">{selectedTask.discovered_competitor_count}</span>
-                      <span className="task-result-stat-label">同行发现</span>
                     </div>
                     <div className="task-result-stat">
                       <span className="task-result-stat-value">{selectedTask.duplicate_post_count}</span>
@@ -607,6 +616,14 @@ export default function CrawlTasksPage({ embedded = false }: { embedded?: boolea
                     </div>
                   </div>
                 </div>
+
+                {selectedTask.status === "success" && (selectedTask.collected_posts ?? 0) > 0 && selectedTask.post_count === 0 && (
+                  <div className="task-detail-section">
+                    <div className="state-panel state-info" style={{ marginBottom: 0 }}>
+                      <p>ℹ️ 本次采集到 <strong>{selectedTask.collected_posts}</strong> 条帖子，但全部为已存在数据（{selectedTask.duplicate_post_count} 条重复），未产生新增帖子。这通常是因为该关键词的搜索结果与之前的采集任务高度重叠。</p>
+                    </div>
+                  </div>
+                )}
 
                 {selectedTask.status === "failed" && (
                   <div className="task-detail-section">
@@ -654,12 +671,12 @@ export default function CrawlTasksPage({ embedded = false }: { embedded?: boolea
                       <Link className="task-quick-action-btn" to={`/posts?source_type=${selectedTask.source_type}`}>
                         <span className="task-quick-action-icon">📄</span>
                         <strong>查看帖子</strong>
-                        <span>{selectedTask.post_count} 条帖子</span>
+                        <span>{selectedTask.collected_posts ?? selectedTask.post_count} 条帖子</span>
                       </Link>
                       <Link className="task-quick-action-btn" to={`/comments?platform=${selectedTask.platform}`}>
                         <span className="task-quick-action-icon">💬</span>
                         <strong>查看评论</strong>
-                        <span>{selectedTask.comment_count} 条评论</span>
+                        <span>{selectedTask.collected_comments ?? selectedTask.comment_count} 条评论</span>
                       </Link>
                       <Link className="task-quick-action-btn" to={`/leads?source_type=${selectedTask.source_type}`}>
                         <span className="task-quick-action-icon">🎯</span>

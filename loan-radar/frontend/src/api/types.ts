@@ -432,6 +432,7 @@ export type DashboardStats = {
     post_count: number;
     comment_count: number;
     lead_count: number;
+    collected_posts: number;
     error_message: string;
     started_at: string | null;
     finished_at: string | null;

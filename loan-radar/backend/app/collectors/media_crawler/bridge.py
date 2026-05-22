@@ -69,7 +69,7 @@ class MediaCrawlerBridge:
         try:
             resp = httpx.get(
                 f"{self.api_base_url}/api/health",
-                timeout=10,
+                timeout=3,
             )
             return resp.status_code == 200
         except Exception:

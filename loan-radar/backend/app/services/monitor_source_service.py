@@ -56,8 +56,6 @@ def validate_platform(platform: str) -> None:
 
 
 def validate_platform_for_collector_type(platform: str, collector_type: str) -> None:
-    if collector_type == "mock":
-        return
     if collector_type == "media_crawler":
         if platform not in MEDIA_CRAWLER_PLATFORMS:
             raise ValueError(

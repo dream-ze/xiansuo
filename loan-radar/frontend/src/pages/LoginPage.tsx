@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button, Card, Form, Input, message, Tabs } from "antd";
 
-const API_BASE = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.DEV ? "" : "http://localhost:8001";
+import { API_BASE_URL } from "../api/request";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -11,7 +11,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),

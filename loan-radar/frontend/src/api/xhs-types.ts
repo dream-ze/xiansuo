@@ -219,6 +219,7 @@ export type CreateDraftPayload = {
   title?: string;
   body?: string;
   intent?: "rewrite" | "publish" | string;
+  custom_topic?: string;
 };
 
 export type ModelType = "text" | "image";
@@ -422,8 +423,13 @@ export type MonitoringNote = {
 
 export type MonitoringRefreshResponse = {
   target: MonitoringTarget;
-  task: TaskRecord;
-  snapshot: MonitoringSnapshot;
+  task: {
+    id: number;
+    status: string;
+    progress: string;
+    queue_position: number;
+  };
+  crawl_task: Record<string, unknown>;
 };
 
 export type KeywordGroup = {
@@ -566,22 +572,20 @@ export type AutoTaskRunResult = {
   auto_task: AutoTask;
   keyword: string;
   source_note: {
-    note_id: string;
+    id: number | null;
     title: string;
-    likes: number;
-    collects: number;
-    comments: number;
+    content: string;
   };
   draft: {
-    id: number;
+    id: number | null;
     title: string;
     body: string;
-    created_at: string;
+    status: string;
   };
   publish_job: {
-    id: number;
+    id: number | null;
     status: string;
-    platform_account_id: number;
+    title: string;
   };
 };
 

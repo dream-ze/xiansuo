@@ -1,10 +1,12 @@
-import { CloudDownloadOutlined, TeamOutlined } from "@ant-design/icons";
+import { CloudDownloadOutlined, EditOutlined, TeamOutlined } from "@ant-design/icons";
 import { Button, Card, Row, Col, Space, Table, Tag, Typography, message } from "antd";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { convertLeadToCrm, exportLeadsCsv, getLeads, type Lead, type LeadQueryParams } from "../../api";
+import { createDraftFromNote } from "../../api/xhs-api";
+import { showToast } from "../../components/ToastContainer";
 import LeadDetailDrawer from "./LeadDetailDrawer";
 import LeadFilters, { type FilterValues } from "./LeadFilters";
 
@@ -52,6 +54,7 @@ export default function LeadsPage() {
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [generatingDraft, setGeneratingDraft] = useState(false);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [statTotals, setStatTotals] = useState<Record<string, number>>({ all: 0, A: 0, B: 0, C: 0, D: 0 });
@@ -177,6 +180,32 @@ export default function LeadsPage() {
     }
   }
 
+  async function handleGenerateTopicDraft() {
+    setGeneratingDraft(true);
+    try {
+      const highLevelLeads = items.filter((l) => l.lead_level === "A" || l.lead_level === "B");
+      if (highLevelLeads.length === 0) {
+        showToast("warning", "生成选题", "当前无 A/B 级线索，无法生成选题");
+        return;
+      }
+      const painPoints = highLevelLeads
+        .slice(0, 5)
+        .map((l) => l.content || l.demand_type || "")
+        .filter(Boolean);
+      const topic = painPoints.length > 0 ? painPoints.join("、") : "助贷";
+      await createDraftFromNote({
+        platform: "xhs",
+        intent: "publish",
+        custom_topic: `基于线索痛点选题：${topic}`,
+      });
+      showToast("success", "生成选题草稿", `已基于 ${highLevelLeads.length} 条 A/B 级线索生成小红书选题草稿，可在草稿工坊查看`);
+    } catch (err) {
+      showToast("error", "生成选题失败", err instanceof Error ? err.message : "未知错误");
+    } finally {
+      setGeneratingDraft(false);
+    }
+  }
+
   const columns = [
     {
       title: "等级",
@@ -274,7 +303,14 @@ export default function LeadsPage() {
           <div style={{ fontSize: 18, fontWeight: 600, color: "#1F1F1F" }}>线索池</div>
           <div style={{ fontSize: 13, color: "#8C8C8C", marginTop: 2 }}>查看 A/B/C/D 级线索，核对证据链，修改状态并导出</div>
         </div>
-        <Button icon={<CloudDownloadOutlined />} onClick={handleExportCsv} loading={exporting} size="small">导出 CSV</Button>
+        <Space>
+          <Button icon={<EditOutlined />} onClick={handleGenerateTopicDraft} loading={generatingDraft} size="small">
+            从痛点生成选题
+          </Button>
+          <Button icon={<CloudDownloadOutlined />} onClick={handleExportCsv} loading={exporting} size="small">
+            导出 CSV
+          </Button>
+        </Space>
       </div>
 
       <Row gutter={[12, 8]} style={{ marginBottom: 16 }}>
