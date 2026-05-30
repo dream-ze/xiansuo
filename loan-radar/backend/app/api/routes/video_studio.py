@@ -69,6 +69,10 @@ def _validate_video_owner(file_name: str, user: User) -> str:
     valid_prefixes = (_video_prefix(user), f"xhs-upload-u{user.id}-")
     if not file_name.startswith(valid_prefixes):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    media_dir = _media_dir()
+    resolved = (media_dir / file_name).resolve()
+    if not resolved.is_relative_to(media_dir.resolve()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     return file_name
 
 

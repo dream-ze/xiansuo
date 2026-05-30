@@ -52,7 +52,13 @@ async def lifespan(application: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    lifespan=lifespan,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +110,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception: %s\n%s", exc, traceback.format_exc())
-    detail = str(exc) if not settings.is_production else "Internal server error"
-    return JSONResponse(status_code=500, content={"detail": detail})
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
