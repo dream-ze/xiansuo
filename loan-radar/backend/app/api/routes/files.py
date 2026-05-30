@@ -54,6 +54,10 @@ def _validate_owner_media_name(file_name: str, current_user: User) -> str:
     valid_prefixes = (_owner_media_prefix(current_user), f"xhs-asset-u{current_user.id}-", f"xhs-upload-u{current_user.id}-")
     if not file_name.startswith(valid_prefixes):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found")
+    media_dir = _media_dir()
+    resolved = (media_dir / file_name).resolve()
+    if not resolved.is_relative_to(media_dir.resolve()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found")
     return file_name
 
 
@@ -75,7 +79,6 @@ def _media_type(file_name: str) -> str:
 def _serialize_media_file(*, file_name: str, width: int, height: int) -> dict:
     return {
         "file_name": file_name,
-        "file_path": str(_media_dir() / file_name),
         "download_url": f"/api/files/media/{file_name}",
         "width": width,
         "height": height,
@@ -152,10 +155,13 @@ def resize_image(payload: ResizeImageRequest, current_user: User = Depends(requi
 
 
 @router.get("/media/{file_name}")
-def download_media(file_name: str):
+def download_media(file_name: str, _current_user: User = Depends(require_current_user)):
     if Path(file_name).name != file_name or ".." in file_name:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found")
-    file_path = _media_dir() / file_name
+    media_dir = _media_dir()
+    file_path = (media_dir / file_name).resolve()
+    if not file_path.is_relative_to(media_dir.resolve()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found")
     if not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found")
     return FileResponse(file_path, filename=file_name, media_type=_media_type(file_name))
@@ -171,7 +177,9 @@ def download_export(file_name: str, current_user: User = Depends(require_current
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export file not found")
 
     export_dir = Path(get_settings().storage_dir) / "exports"
-    file_path = export_dir / file_name
+    file_path = (export_dir / file_name).resolve()
+    if not file_path.is_relative_to(export_dir.resolve()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export file not found")
     if not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export file not found")
 
@@ -203,7 +211,6 @@ async def upload_file(file: UploadFile, current_user: User = Depends(require_cur
 
     return success_response({
         "file_name": file_name,
-        "file_path": str(output_path.resolve()),
         "download_url": f"/api/files/media/{file_name}",
         "asset_type": asset_type,
         "size": len(content),

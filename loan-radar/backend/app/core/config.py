@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
 
-_DEV_SECRET_KEY = "dev-only-change-me-in-production-32ch"
+_DEV_SECRET_KEY = "dev-only-change-me-in-production-32ch"  # noqa: S105  — non-secret dev placeholder
 
 
 class Settings(BaseSettings):
@@ -68,11 +68,9 @@ def get_settings() -> Settings:
     s = Settings()
     if not s.secret_key or s.secret_key == _DEV_SECRET_KEY:
         if s.is_production:
-            s.secret_key = _secrets.token_urlsafe(48)
-            print(
-                "[WARN] SECRET_KEY not set in production — auto-generated. "
-                "Tokens will invalidate on restart. Set SECRET_KEY env var for stability.",
-                file=sys.stderr,
+            raise RuntimeError(
+                "SECRET_KEY env var must be set in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
             )
         else:
             print(
