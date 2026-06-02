@@ -147,7 +147,8 @@ def _sync_running_task_if_finished(store: RawTaskStore, task_id: int) -> None:
     if crawler_manager.status == "running":
         return
     if crawler_manager.status == "error":
-        store.mark_failed(task_id, "MediaCrawler process failed")
+        error_message = crawler_manager.get_status().get("error_message") or "MediaCrawler process failed"
+        store.mark_failed(task_id, error_message)
         return
 
     importer = RawDataImporter(data_dir=DATA_DIR, store=store)

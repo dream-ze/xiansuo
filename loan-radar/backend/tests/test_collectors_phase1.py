@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from app.collectors.base import CollectorResult, CollectedPost, CollectedComment
 from app.collectors.config import CollectorConfig
 from app.collectors.factory import CollectorFactory
+from app.collectors.media_crawler.embedded_collector import EmbeddedMediaCrawlerCollector
 from app.collectors.media_crawler.collector import MediaCrawlerCollector
 
 
@@ -101,7 +102,8 @@ class TestCollectorConfig:
 
 
 class TestCollectorFactory:
-    def test_factory_create_media_crawler(self):
+    def test_factory_create_media_crawler(self, monkeypatch):
+        monkeypatch.delenv("MEDIA_CRAWLER_HOME", raising=False)
         source = SimpleNamespace(
             source_type="keyword",
             platform="xhs",
@@ -110,7 +112,8 @@ class TestCollectorFactory:
         collector = CollectorFactory.create(source)
         assert isinstance(collector, MediaCrawlerCollector)
 
-    def test_factory_create_default_media_crawler(self):
+    def test_factory_create_default_media_crawler(self, monkeypatch):
+        monkeypatch.delenv("MEDIA_CRAWLER_HOME", raising=False)
         source = SimpleNamespace(
             source_type="keyword",
             platform="xhs",
@@ -118,6 +121,16 @@ class TestCollectorFactory:
         )
         collector = CollectorFactory.create(source)
         assert isinstance(collector, MediaCrawlerCollector)
+
+    def test_factory_create_embedded_media_crawler_when_home_exists(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("MEDIA_CRAWLER_HOME", str(tmp_path))
+        source = SimpleNamespace(
+            source_type="keyword",
+            platform="xhs",
+            config={"collector_type": "media_crawler"},
+        )
+        collector = CollectorFactory.create(source)
+        assert isinstance(collector, EmbeddedMediaCrawlerCollector)
 
     def test_factory_reject_unknown_collector_type(self):
         source = SimpleNamespace(
@@ -139,7 +152,8 @@ class TestCollectorFactory:
             CollectorFactory.create(source)
         assert "Unsupported collector_type: xhs" in str(exc_info.value)
 
-    def test_factory_douyin_via_media_crawler(self):
+    def test_factory_douyin_via_media_crawler(self, monkeypatch):
+        monkeypatch.delenv("MEDIA_CRAWLER_HOME", raising=False)
         source = SimpleNamespace(
             source_type="keyword",
             platform="douyin",
@@ -148,7 +162,8 @@ class TestCollectorFactory:
         collector = CollectorFactory.create(source)
         assert isinstance(collector, MediaCrawlerCollector)
 
-    def test_factory_zhihu_via_media_crawler(self):
+    def test_factory_zhihu_via_media_crawler(self, monkeypatch):
+        monkeypatch.delenv("MEDIA_CRAWLER_HOME", raising=False)
         source = SimpleNamespace(
             source_type="keyword",
             platform="zhihu",

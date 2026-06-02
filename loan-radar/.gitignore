@@ -40,3 +40,8 @@ mediacrawler/package-lock.json
 mediacrawler/.pre-commit-config.yaml
 mediacrawler/.python-version
 mediacrawler/mypy.ini
+
+*.7z
+*.zip
+release3/
+release/

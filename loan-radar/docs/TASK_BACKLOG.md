@@ -97,7 +97,27 @@
 - [x] XHS 适配器（creator_api/creator_login/pc_api/pc_login）
 - [x] 文档更新（README/PRD/API/DB_DESIGN/DEMO_FLOW/TASK_BACKLOG）
 
-## P4 下一步：稳定性与清理
+## P4 已完成：智能工作流模块
+
+- [x] RAG 知识库后端（LlamaIndex + ChromaDB 向量存储，知识条目 CRUD，语义检索，智能问答）
+- [x] 知识库 API（索引笔记/帖子、语义检索、知识问答、统计信息）
+- [x] 合规规则管理后端（compliance_rules 模型、CRUD、默认规则初始化）
+- [x] 合规规则 API（规则列表/创建/更新/删除/初始化默认规则）
+- [x] LangGraph 工作流引擎（WorkflowEngine + LangGraph 图编排）
+- [x] 线索评分工作流（rule_prescreen → ai_lead_identify → lead_persist）
+- [x] 话术生成工作流（rag_retrieve → ai_script_generate → compliance_check → risk_gate）
+- [x] 内容发布审核工作流（ai_quality_eval → compliance_check → risk_gate）
+- [x] 风险门控节点（自动暂停高风险工作流，创建审批记录）
+- [x] 审批队列后端（approval_queue 模型、审批/拒绝、内容修改）
+- [x] 审批队列 API（待审批列表/审批/拒绝/统计）
+- [x] ReAct 智能体（LangGraph ReAct 图、5 种工具、多轮对话）
+- [x] 智能体 API（对话/历史/清除）
+- [x] 工作流运行记录（WorkflowRun + WorkflowLog 双表、状态追踪、节点日志）
+- [x] 工作流 API（运行/查询/恢复/取消/节点日志）
+- [x] 数据库迁移：compliance_rules / knowledge_entries / workflow_runs / workflow_logs / approval_queue / agent_conversations（6 个新表）
+- [x] 文档更新（API.md / DB_DESIGN.md / README.md / PRD.md / TASK_BACKLOG.md）
+
+## P5 下一步：稳定性与清理
 
 - [ ] 评估旧采集器代码（MockCollector/PlaywrightCollector/ExternalApiCollector/GenericWebCollector）是否删除或归档
 - [x] 删除 HomePage.tsx 死代码（已不存在，路由已改为 DashboardPage）
@@ -116,7 +136,7 @@
 - [ ] XHS 监控快照对比功能（变化检测和通知）
 - [ ] 发布任务定时调度器（APScheduler 驱动定时发布）
 
-## P5 后续：扩展能力
+## P6 后续：扩展能力
 
 - [ ] 恢复 MockCollector 到 Factory 路由（保证无 MediaCrawler 服务时演示可跑）
 - [ ] 扩展 MediaCrawler 支持更多平台（快手、B站、微博、贴吧）

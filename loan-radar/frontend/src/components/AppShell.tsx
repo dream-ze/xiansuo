@@ -116,10 +116,10 @@ const BREADCRUMB_MAP: Record<string, string> = {
 };
 
 function levelColor(level: string): string {
-  if (level === "error") return "#FF4D4F";
-  if (level === "warning") return "#FAAD14";
-  if (level === "success") return "#52C41A";
-  return "#8C8C8C";
+  if (level === "error") return "#ff4560";
+  if (level === "warning") return "#ffb020";
+  if (level === "success") return "#00e396";
+  return "rgba(255,255,255,0.35)";
 }
 
 function sourceTypeLabel(sourceType: string): string {
@@ -198,27 +198,27 @@ export default function AppShell() {
   const selectedKeys = [getSelectedKey(location.pathname)];
 
   const breadcrumbItems = useMemo(() => {
-    const items = [{ title: <span style={{ cursor: "pointer" }} onClick={() => navigate("/")}>智获客雷达</span> }];
+    const items = [{ title: <span style={{ cursor: "pointer", color: "rgba(0,212,255,0.85)" }} onClick={() => navigate("/")}>智获客雷达</span> }];
     const xhs = isXhsPath(location.pathname);
     if (xhs) {
-      items.push({ title: <span style={{ cursor: "pointer" }} onClick={() => navigate("/xhs/dashboard")}>小红书运营</span> });
+      items.push({ title: <span style={{ cursor: "pointer", color: "rgba(0,212,255,0.7)" }} onClick={() => navigate("/xhs/dashboard")}>小红书运营</span> });
     }
     const label = BREADCRUMB_MAP[location.pathname];
     if (label) {
-      items.push({ title: <span>{label}</span> });
+      items.push({ title: <span style={{ color: "rgba(255,255,255,0.85)" }}>{label}</span> });
     }
     return items;
   }, [location.pathname, navigate]);
 
   const notificationDropdownContent = (
-    <div style={{ width: isMobile ? "calc(100vw - 24px)" : 380, maxWidth: 380, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 6px 16px 0 rgba(0,0,0,0.08)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-        <Text strong style={{ fontSize: 14 }}>通知中心</Text>
+    <div style={{ width: isMobile ? "calc(100vw - 24px)" : 380, maxWidth: 380, background: "#111827", borderRadius: 8, overflow: "hidden", boxShadow: "0 0 20px rgba(0,212,255,0.15), 0 4px 16px rgba(0,0,0,0.5)", border: "1px solid rgba(0,212,255,0.15)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid rgba(0,212,255,0.1)" }}>
+        <Text strong style={{ fontSize: 14, color: "rgba(255,255,255,0.88)" }}>通知中心</Text>
         {unreadCount > 0 && <Button type="link" size="small" onClick={() => void handleMarkAllRead()}>全部已读</Button>}
       </div>
       <div style={{ maxHeight: 400, overflowY: "auto" }}>
         {notifications.length === 0 ? (
-          <div style={{ padding: "40px 16px", textAlign: "center", color: "rgba(0,0,0,0.25)" }}>
+          <div style={{ padding: "40px 16px", textAlign: "center", color: "rgba(255,255,255,0.25)" }}>
             <BellOutlined style={{ fontSize: 32, marginBottom: 8, display: "block" }} />
             暂无通知
           </div>
@@ -226,10 +226,10 @@ export default function AppShell() {
           <List
             dataSource={notifications}
             renderItem={(n) => (
-              <List.Item key={n.id} style={{ padding: "10px 16px", cursor: n.read ? "default" : "pointer", background: n.read ? "transparent" : "rgba(47,84,235,0.04)", borderBottom: "1px solid #f5f5f5" }} onClick={() => !n.read && void handleMarkRead(n.id)}>
+              <List.Item key={n.id} style={{ padding: "10px 16px", cursor: n.read ? "default" : "pointer", background: n.read ? "transparent" : "rgba(0,212,255,0.06)", borderBottom: "1px solid rgba(0,212,255,0.06)" }} onClick={() => !n.read && void handleMarkRead(n.id)}>
                 <List.Item.Meta
-                  avatar={<span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: levelColor(n.level), marginTop: 6 }} />}
-                  title={<Space size={4}><Text style={{ fontSize: 13 }}>{n.title}</Text>{n.source_type && <Tag style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px", margin: 0 }}>{sourceTypeLabel(n.source_type)}</Tag>}</Space>}
+                  avatar={<span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: levelColor(n.level), marginTop: 6, boxShadow: `0 0 6px ${levelColor(n.level)}` }} />}
+                  title={<Space size={4}><Text style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>{n.title}</Text>{n.source_type && <Tag style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px", margin: 0, background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.2)", color: "#00d4ff" }}>{sourceTypeLabel(n.source_type)}</Tag>}</Space>}
                   description={<div>{n.body && <Text type="secondary" style={{ fontSize: 12, display: "block" }}>{n.body}</Text>}<Text type="secondary" style={{ fontSize: 11 }}>{new Date(n.created_at).toLocaleString("zh-CN")}</Text></div>}
                 />
               </List.Item>
@@ -248,7 +248,7 @@ export default function AppShell() {
         <div
           onClick={() => setMobileOpen(false)}
           style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
             zIndex: 99, transition: "opacity 0.2s",
           }}
         />
@@ -268,6 +268,8 @@ export default function AppShell() {
           overflow: "hidden",
           zIndex: 100,
           transition: "left 0.2s",
+          background: "linear-gradient(180deg, #060a14 0%, #0a1020 100%)",
+          borderRight: "1px solid rgba(0,212,255,0.08)",
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -277,7 +279,7 @@ export default function AppShell() {
               display: "flex",
               alignItems: "center",
               justifyContent: collapsed ? "center" : "space-between",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
+              borderBottom: "1px solid rgba(0,212,255,0.1)",
               flexShrink: 0,
               cursor: "pointer",
               height: 56,
@@ -285,8 +287,8 @@ export default function AppShell() {
             onClick={() => navigate("/")}
           >
             <Space align="center" size={collapsed ? 0 : 10}>
-              <RadarChartOutlined style={{ fontSize: 22, color: "#2F54EB", flexShrink: 0 }} />
-              {!collapsed && <span style={{ fontWeight: 700, fontSize: 15, color: "#fff", letterSpacing: 0.5 }}>智获客雷达</span>}
+              <RadarChartOutlined style={{ fontSize: 22, color: "#00d4ff", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(0,212,255,0.5))" }} />
+              {!collapsed && <span style={{ fontWeight: 700, fontSize: 15, color: "#fff", letterSpacing: 0.5, textShadow: "0 0 12px rgba(0,212,255,0.3)" }}>智获客雷达</span>}
             </Space>
             {!collapsed && !isMobile && (
               <Button
@@ -294,33 +296,33 @@ export default function AppShell() {
                 size="small"
                 icon={<MenuFoldOutlined />}
                 onClick={(e) => { e.stopPropagation(); setCollapsed(true); }}
-                style={{ color: "rgba(255,255,255,0.45)" }}
+                style={{ color: "rgba(0,212,255,0.45)" }}
               />
             )}
           </div>
           {collapsed && !isMobile && (
-            <div style={{ textAlign: "center", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
-              <Button type="text" size="small" icon={<MenuUnfoldOutlined />} onClick={() => setCollapsed(false)} style={{ color: "rgba(255,255,255,0.45)" }} />
+            <div style={{ textAlign: "center", padding: "4px 0", borderBottom: "1px solid rgba(0,212,255,0.1)", flexShrink: 0 }}>
+              <Button type="text" size="small" icon={<MenuUnfoldOutlined />} onClick={() => setCollapsed(false)} style={{ color: "rgba(0,212,255,0.45)" }} />
             </div>
           )}
 
           <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingTop: 4 }}>
             {!collapsed && (
-              <div style={{ padding: "8px 20px 4px", fontSize: 11, color: "rgba(255,255,255,0.35)", letterSpacing: 1, fontWeight: 500 }}>
-                线索雷达
+              <div style={{ padding: "8px 20px 4px", fontSize: 11, color: "rgba(0,212,255,0.5)", letterSpacing: 2, fontWeight: 600, textTransform: "uppercase" }}>
+                ◆ 线索雷达
               </div>
             )}
             <Menu theme="dark" mode="inline" selectedKeys={selectedKeys} onClick={handleMenuClick} items={radarNavItems} style={{ borderRight: 0 }} />
             {!collapsed && (
-              <div style={{ padding: "16px 20px 4px", fontSize: 11, color: "rgba(255,255,255,0.35)", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 4, letterSpacing: 1, fontWeight: 500 }}>
-                小红书运营
+              <div style={{ padding: "16px 20px 4px", fontSize: 11, color: "rgba(0,212,255,0.5)", borderTop: "1px solid rgba(0,212,255,0.06)", marginTop: 4, letterSpacing: 2, fontWeight: 600, textTransform: "uppercase" }}>
+                ◆ 小红书运营
               </div>
             )}
-            {collapsed && <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "4px 16px" }} />}
+            {collapsed && <div style={{ borderTop: "1px solid rgba(0,212,255,0.06)", margin: "4px 16px" }} />}
             <Menu theme="dark" mode="inline" selectedKeys={selectedKeys} onClick={handleMenuClick} items={xhsNavItems} style={{ borderRight: 0 }} />
           </div>
 
-          <div style={{ flexShrink: 0, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ flexShrink: 0, borderTop: "1px solid rgba(0,212,255,0.1)" }}>
             <Menu theme="dark" mode="inline" selectedKeys={selectedKeys} onClick={handleMenuClick} items={footerNavItems} style={{ borderRight: 0 }} />
           </div>
         </div>
@@ -332,10 +334,11 @@ export default function AppShell() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          borderBottom: "1px solid #E8E8E8",
+          borderBottom: "1px solid rgba(0,212,255,0.1)",
           height: 56,
           lineHeight: "56px",
-          background: "#fff",
+          background: "rgba(10,14,26,0.85)",
+          backdropFilter: "blur(12px)",
           position: "sticky",
           top: 0,
           zIndex: 50,
@@ -352,7 +355,7 @@ export default function AppShell() {
           <Space size={isMobile ? 8 : 16} align="center" style={{ flexShrink: 0 }}>
             <Dropdown popupRender={() => notificationDropdownContent} trigger={["click"]} placement="bottomRight">
               <Badge count={unreadCount} size="small" offset={[-2, 2]}>
-                <Button type="text" icon={<BellOutlined style={{ fontSize: 16 }} />} style={{ display: "flex", alignItems: "center", justifyContent: "center" }} />
+                <Button type="text" icon={<BellOutlined style={{ fontSize: 16, color: "rgba(0,212,255,0.7)" }} />} style={{ display: "flex", alignItems: "center", justifyContent: "center" }} />
               </Badge>
             </Dropdown>
             <Dropdown
@@ -371,11 +374,11 @@ export default function AppShell() {
               trigger={["click"]}
               placement="bottomRight"
             >
-              <Avatar size={30} style={{ background: "#2F54EB", cursor: "pointer", fontSize: 14 }}>A</Avatar>
+              <Avatar size={30} style={{ background: "linear-gradient(135deg, #00d4ff 0%, #0066ff 100%)", cursor: "pointer", fontSize: 14, boxShadow: "0 0 8px rgba(0,212,255,0.3)" }}>A</Avatar>
             </Dropdown>
           </Space>
         </Header>
-        <Content style={{ background: "#F0F2F5", padding: isMobile ? "12px" : "20px 24px", minHeight: "calc(100vh - 56px)", overflow: "auto" }}>
+        <Content style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.04) 0%, transparent 60%), #0a0e1a", padding: isMobile ? "12px" : "20px 24px", minHeight: "calc(100vh - 56px)", overflow: "auto" }}>
           <Outlet />
         </Content>
       </Layout>
@@ -389,11 +392,11 @@ export function PageHeader({ eyebrow, title, description, action }: { eyebrow: s
       <Col xs={24} sm={undefined} flex={action ? "1" : undefined}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div>
-            <Text style={{ fontSize: 12, color: "#8C8C8C", letterSpacing: "0.05em", textTransform: "uppercase" }}>{eyebrow}</Text>
-            <div style={{ fontSize: 18, fontWeight: 600, color: "#1F1F1F", marginTop: 2 }}>{title}</div>
+            <Text style={{ fontSize: 12, color: "rgba(0,212,255,0.6)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{eyebrow}</Text>
+            <div style={{ fontSize: 18, fontWeight: 600, color: "rgba(255,255,255,0.88)", marginTop: 2, textShadow: "0 0 12px rgba(0,212,255,0.15)" }}>{title}</div>
           </div>
         </div>
-        {description && <Text style={{ fontSize: 13, color: "#8C8C8C", marginTop: 2, display: "block" }}>{description}</Text>}
+        {description && <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginTop: 2, display: "block" }}>{description}</Text>}
       </Col>
       {action && <Col xs={24} sm="auto" style={{ marginTop: 8 }}>{action}</Col>}
     </Row>

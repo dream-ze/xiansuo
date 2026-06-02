@@ -39,6 +39,11 @@
 | XHS 数据洞察 | `/api/xhs/analytics` | `xhs_analytics.py` | 运营总览/热门内容/话题/评论/竞品对标 |
 | XHS 自动运营 | `/api/xhs/auto-ops` | `xhs_auto_ops.py` | 自动任务 CRUD/执行 |
 | XHS 监控 | `/api/xhs/monitoring` | `xhs_monitoring.py` | 监控目标 CRUD/刷新 |
+| 智能体 | `/api/agent` | `agent.py` | ReAct 智能体对话/工具列表/会话管理 |
+| 知识库 | `/api/knowledge` | `knowledge.py` | 知识条目/索引/检索/查询/统计 |
+| 合规规则 | `/api/compliance-rules` | `compliance_rules.py` | 合规规则 CRUD/初始化默认规则 |
+| 工作流 | `/api/workflows` | `workflows.py` | 线索评分/话术生成/内容发布审核/运行记录 |
+| 审批队列 | `/api/approvals` | `approvals.py` | 审批列表/待审计数/审批操作 |
 | 视频工坊 | `/api/video-studio` | `video_studio.py` | 视频上传/截取封面/AI 描述 |
 
 ## 二、约定
@@ -2487,3 +2492,710 @@ CSV 列：`线索等级, 评分, 需求类型, 评论内容, 识别理由, 跟�
 - AI 操作自动创建 Task 记录，支持任务追踪和错误处理
 - 文件存储按用户 ID 前缀隔离，确保用户间文件不可互访
 - API Key 使用 Fernet 加密存储，接口仅返回 `has_api_key` 布尔值
+
+---
+
+## 三十三、智能体 Agent
+
+路由前缀：`/api/agent`
+
+所有接口需要认证。基于 LangGraph 的 ReAct (Reasoning + Acting) 智能体，支持多轮对话和工具调用。
+
+### 33.1 智能体对话
+
+`POST /api/agent/chat`
+
+请求体：
+
+```json
+{
+  "query": "帮我生成一条针对'急需5万周转'的跟进话术",
+  "thread_id": null,
+  "max_iterations": 8
+}
+```
+
+- `query`：用户问题（1-6000 字符）
+- `thread_id`：对话线程 ID，传入则继续多轮对话，不传则新建对话
+- `max_iterations`：最大思考-行动迭代次数（1-20，默认 8）
+
+行为：
+1. 获取用户默认文本模型配置
+2. 构建 RAG 查询引擎和结构化 LLM 客户端
+3. 如有 `thread_id`，从数据库加载历史对话上下文
+4. 运行 ReAct Agent 图（思考 → 行动 → 观察 循环）
+5. 保存对话记录到数据库和 WorkflowRun
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "thread_id": "abc123",
+    "final_answer": "针对'急需5万周转'的客户，建议话术如下：...",
+    "iterations": 3,
+    "tool_history": [
+      {"action": "knowledge_search", "action_input": {"query": "周转话术"}, "success": true, "observation": "..."},
+      {"action": "script_generate", "action_input": {"text": "急需5万周转", "lead_level": "A"}, "success": true, "observation": "..."},
+      {"action": "compliance_check", "action_input": {"content": "生成的话术内容"}, "success": true, "observation": "..."}
+    ]
+  }
+}
+```
+
+### 33.2 工具列表
+
+`GET /api/agent/tools`
+
+行为：返回智能体可用的全部工具定义。
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "name": "knowledge_search",
+      "description": "检索知识库素材。可以搜索产品资料、平台规则、优质话术等。",
+      "parameters": { ... }
+    },
+    {
+      "name": "compliance_check",
+      "description": "合规审核工具。检查营销内容是否包含违规表述。",
+      "parameters": { ... }
+    },
+    {
+      "name": "script_generate",
+      "description": "话术生成工具。根据客户评论和需求类型生成个性化跟进话术。",
+      "parameters": { ... }
+    },
+    {
+      "name": "lead_score",
+      "description": "线索评分工具。使用规则引擎对文本进行快速评分。",
+      "parameters": { ... }
+    },
+    {
+      "name": "quality_eval",
+      "description": "内容质量评估工具。评估营销内容的整体质量。",
+      "parameters": { ... }
+    }
+  ]
+}
+```
+
+工具详细说明：
+
+| 工具 | 功能 | 参数 |
+|------|------|------|
+| `knowledge_search` | 检索知识库素材（产品资料、平台规则、优质话术） | `query`(必填), `source_types`(可选: material/platform_rule/quality_script), `top_k`(默认5) |
+| `compliance_check` | 合规审核，检查违规表述 | `content`(必填) |
+| `script_generate` | 生成 2-3 个不同风格的跟进话术 | `text`(必填), `demand_type`(可选), `lead_level`(默认C: A/B/C/D) |
+| `lead_score` | 规则引擎快速评分，返回 0-100 分和 A/B/C/D 等级 | `text`(必填) |
+| `quality_eval` | 评估内容质量，返回 0-1 评分和改进建议 | `content`(必填), `topic`(可选) |
+
+### 33.3 会话列表
+
+`GET /api/agent/conversations`
+
+查询参数：
+
+- `limit`（可选，默认 20）：返回最近 N 个会话
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "thread_id": "abc123",
+      "last_message": "针对'急需5万周转'的客户...",
+      "message_count": 5,
+      "created_at": "2026-06-01T10:00:00"
+    }
+  ]
+}
+```
+
+### 33.4 会话详情
+
+`GET /api/agent/conversations/{thread_id}`
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "thread_id": "abc123",
+    "message_count": 5,
+    "messages": [
+      {"role": "user", "content": "帮我生成话术", "tool_calls": [], "metadata": {}},
+      {"role": "assistant", "content": "好的，我来为您生成...", "tool_calls": [...], "metadata": {"iterations": 3}},
+      {"role": "tool", "content": "搜索结果...", "metadata": {"tool_name": "knowledge_search", "success": true}}
+    ]
+  }
+}
+```
+
+### 33.5 删除会话
+
+`DELETE /api/agent/conversations/{thread_id}`
+
+行为：删除指定会话及其所有消息记录。
+
+响应：`success_response({"thread_id": "abc123", "deleted_count": 5})`
+
+---
+
+## 三十四、知识库 Knowledge
+
+路由前缀：`/api/knowledge`
+
+所有接口需要认证。基于 LlamaIndex + ChromaDB 的 RAG 知识库，支持文档索引、语义检索和智能问答。
+
+### 34.1 知识条目列表
+
+`GET /api/knowledge/entries`
+
+查询参数：
+
+- `source_type`（可选）：素材类型过滤
+- `page` / `page_size`
+
+响应：`paginated([KnowledgeEntryOut])`。
+
+`KnowledgeEntryOut` 字段：`id, source_type, source_id, content(截断200字), embedding_id, metadata, created_at`。
+
+### 34.2 知识库统计
+
+`GET /api/knowledge/stats`
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "total": 50,
+    "by_type": {
+      "material": 30,
+      "platform_rule": 10,
+      "quality_script": 10
+    },
+    "chroma": {
+      "collection_name": "user_1_knowledge",
+      "document_count": 50,
+      "available": true
+    }
+  }
+}
+```
+
+### 34.3 索引知识
+
+`POST /api/knowledge/index`
+
+请求体：
+
+```json
+{
+  "source_type": "material",
+  "note_ids": [1, 2, 3]
+}
+```
+
+行为：将指定笔记内容索引到 ChromaDB 向量数据库。`source_type` 为 `material` 时，从笔记表读取内容进行索引。
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "indexed": 3,
+    "skipped": 0,
+    "failed": 0
+  }
+}
+```
+
+### 34.4 索引全部笔记
+
+`POST /api/knowledge/index-all-notes`
+
+行为：将当前用户所有笔记（最多 100 条）批量索引到 ChromaDB。
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "indexed": 20,
+    "skipped": 5,
+    "failed": 0
+  }
+}
+```
+
+### 34.5 语义检索
+
+`POST /api/knowledge/search`
+
+请求体：
+
+```json
+{
+  "query": "信用贷话术",
+  "top_k": 5,
+  "source_types": ["material", "quality_script"]
+}
+```
+
+行为：基于查询文本进行语义检索，返回最相关的知识条目。
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "content": "相关内容...",
+        "score": 0.92,
+        "source_type": "quality_script",
+        "metadata": { ... }
+      }
+    ],
+    "count": 5
+  }
+}
+```
+
+### 34.6 知识问答
+
+`POST /api/knowledge/query`
+
+请求体：
+
+```json
+{
+  "query": "小红书发布有哪些合规注意事项？",
+  "similarity_top_k": 5,
+  "response_mode": "tree_summarize"
+}
+```
+
+行为：基于 RAG 的智能问答，先检索相关文档，再由 LLM 生成回答。`response_mode` 可选值：`tree_summarize` / `refine` / `compact`。
+
+响应：`success_response({"answer": "...", "source_nodes": [...]})`
+
+### 34.7 删除知识条目
+
+`DELETE /api/knowledge/entries/{entry_id}`
+
+行为：删除知识条目，同时从 ChromaDB 中移除对应向量。
+
+响应：`success_response({"id": entry_id, "status": "deleted"})`
+
+---
+
+## 三十五、合规规则 Compliance Rules
+
+路由前缀：`/api/compliance-rules`
+
+所有接口需要认证。管理营销内容的合规审核规则，用于工作流中的合规检查节点。
+
+### 35.1 规则列表
+
+`GET /api/compliance-rules`
+
+查询参数：
+
+- `category`（可选）：规则类别过滤
+- `severity`（可选）：严重程度过滤
+- `is_active`（可选，bool）：是否仅返回启用的规则
+- `page` / `page_size`
+
+响应：`paginated([ComplianceRuleOut])`。
+
+`ComplianceRuleOut` 字段：`id, category, rule_text, rule_description, severity, is_active, created_at, updated_at`。
+
+- `category`：规则类别，如 `platform_rule`（平台规则）、`industry_regulation`（行业规范）、`internal_policy`（内部策略）
+- `severity`：严重程度，`low` / `medium` / `high` / `critical`
+
+### 35.2 创建规则
+
+`POST /api/compliance-rules`
+
+请求体：
+
+```json
+{
+  "category": "platform_rule",
+  "rule_text": "不得包含微信号、二维码等站外引流信息",
+  "rule_description": "小红书社区规范",
+  "severity": "high"
+}
+```
+
+响应：`success_response(ComplianceRuleOut)`
+
+### 35.3 更新规则
+
+`PATCH /api/compliance-rules/{rule_id}`
+
+请求体（所有字段可选）：
+
+```json
+{
+  "category": "industry_regulation",
+  "rule_text": "更新后的规则文本",
+  "severity": "critical",
+  "is_active": false
+}
+```
+
+响应：`success_response(ComplianceRuleOut)`
+
+### 35.4 删除规则
+
+`DELETE /api/compliance-rules/{rule_id}`
+
+响应：`success_response({"id": rule_id, "status": "deleted"})`
+
+### 35.5 初始化默认规则
+
+`POST /api/compliance-rules/seed-defaults`
+
+行为：为当前用户创建默认合规规则（仅在用户无任何规则时生效）。默认规则包含 9 条：
+
+| 类别 | 规则 | 严重程度 |
+|------|------|----------|
+| platform_rule | 不得承诺包下款、百分百通过等绝对化表述 | critical |
+| platform_rule | 不得包含微信号、二维码等站外引流信息 | high |
+| platform_rule | 不得使用夸张标题党吸引点击 | medium |
+| industry_regulation | 不得暗示内部渠道、特殊通道办理贷款 | high |
+| industry_regulation | 不得宣传零利息、免息等不实利率信息 | critical |
+| industry_regulation | 不得引导黑户包装、刷流水等违规操作 | critical |
+| internal_policy | 话术中应包含风险提示 | medium |
+| internal_policy | 不得直接报价利率，应引导线下咨询 | medium |
+| internal_policy | 首次接触不应过度推销，以咨询为主 | low |
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "已有规则，跳过初始化",
+    "created_count": 9
+  }
+}
+```
+
+---
+
+## 三十六、工作流 Workflows
+
+路由前缀：`/api/workflows`
+
+所有接口需要认证。基于 LangGraph 的工作流引擎，支持线索评分、话术生成、内容发布审核三种工作流。
+
+### 36.1 线索评分工作流
+
+`POST /api/workflows/lead-scoring`
+
+请求体：
+
+```json
+{
+  "text": "征信花了急需5万周转",
+  "platform": "xhs",
+  "source_id": 1,
+  "source_type": "keyword",
+  "source_post_id": 10,
+  "source_comment_id": 50,
+  "user_name": "用户A",
+  "user_profile_url": "https://..."
+}
+```
+
+所有字段除 `text` 外均可选。
+
+行为：
+1. **规则预筛**（rule_prescreen）：使用规则引擎快速评分，判断是否为潜在线索
+2. **AI 线索识别**（ai_lead_identify）：使用 LLM 深度分析，输出置信度、线索等级、需求类型、紧急度、关键证据等
+3. **线索持久化**（lead_persist）：将结果保存到 leads 表
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "workflow_id": "abc123",
+    "state": "completed",
+    "rule_score": 75,
+    "rule_level": "A",
+    "ai_result": {
+      "is_potential_lead": true,
+      "confidence": 0.92,
+      "lead_level": "A",
+      "demand_type": "借款需求",
+      "urgency": "high",
+      "demand_summary": "用户征信有问题，急需5万元周转",
+      "key_evidence": ["征信花了", "急需5万", "周转"],
+      "estimated_amount": "5万",
+      "risk_flags": [],
+      "reasoning": "..."
+    },
+    "lead_id": 42
+  }
+}
+```
+
+### 36.2 话术生成工作流
+
+`POST /api/workflows/script-generation`
+
+请求体：
+
+```json
+{
+  "lead_id": 42,
+  "demand_type": "借款需求",
+  "lead_level": "A"
+}
+```
+
+- `lead_id`：必填，关联的线索 ID
+- `demand_type`：可选，默认使用线索的需求类型
+- `lead_level`：可选，默认使用线索的等级
+
+行为：
+1. **RAG 检索**（rag_retrieve）：从知识库检索参考素材、平台规则、优质话术
+2. **AI 话术生成**（ai_script_generate）：基于检索结果和线索信息，生成 2-3 个不同风格的话术候选
+3. **合规检查**（compliance_check）：检查生成的话术是否合规
+4. **风险门控**（risk_gate）：根据合规风险等级决定自动通过或进入人工审批
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "workflow_id": "def456",
+    "state": "completed",
+    "scripts": {
+      "candidates": [
+        {"style": "专业咨询", "text": "...", "compliance_notes": "..."},
+        {"style": "亲和关怀", "text": "...", "compliance_notes": "..."}
+      ],
+      "recommended_index": 0,
+      "rag_sources": ["知识条目1", "知识条目2"]
+    },
+    "compliance": {
+      "is_compliant": true,
+      "risk_level": "low",
+      "violations": [],
+      "suggestions": []
+    },
+    "risk_gate": {
+      "auto_approve": true,
+      "gate_decision": "auto_approved"
+    }
+  }
+}
+```
+
+### 36.3 内容发布审核工作流
+
+`POST /api/workflows/content-publish-check`
+
+请求体：
+
+```json
+{
+  "draft_id": 5,
+  "publish_job_id": null,
+  "title": "信用贷攻略",
+  "body": "笔记正文内容..."
+}
+```
+
+- `draft_id` / `publish_job_id`：可选，关联的草稿或发布任务 ID
+- `title` / `body`：可选，直接传入内容（如有关联草稿/发布任务则自动填充）
+
+行为：
+1. **AI 质量评估**（ai_quality_eval）：评估内容的相关性、完整性、可读性
+2. **合规检查**（compliance_check）：检查内容是否违反合规规则
+3. **风险门控**（risk_gate）：根据质量和合规结果决定自动通过或进入人工审批
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "workflow_id": "ghi789",
+    "state": "completed",
+    "quality": {
+      "overall_score": 0.85,
+      "relevance_score": 0.9,
+      "completeness_score": 0.8,
+      "readability_score": 0.85,
+      "issues": [],
+      "suggestions": ["可以增加具体案例"]
+    },
+    "compliance": {
+      "is_compliant": true,
+      "risk_level": "low",
+      "violations": [],
+      "suggestions": []
+    },
+    "risk_gate": {
+      "auto_approve": true,
+      "gate_decision": "auto_approved"
+    }
+  }
+}
+```
+
+### 36.4 工作流运行记录列表
+
+`GET /api/workflows/runs`
+
+查询参数：
+
+- `workflow_type`（可选）：`lead_scoring` / `script_generation` / `content_publish` / `agent_react`
+- `state`（可选）：`pending` / `running` / `paused` / `completed` / `failed` / `cancelled`
+- `page` / `page_size`
+
+响应：`paginated([WorkflowRunOut])`。
+
+`WorkflowRunOut` 字段：`id, workflow_id, workflow_type, state, input_data, output_data, current_node, paused_at_node, error_node, error_message, retry_count, parent_workflow_id, created_at, updated_at, completed_at`。
+
+### 36.5 工作流运行详情
+
+`GET /api/workflows/runs/{workflow_id}`
+
+响应：`success_response(WorkflowRunOut)`
+
+### 36.6 工作流日志
+
+`GET /api/workflows/runs/{workflow_id}/logs`
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "workflow_id": "abc123",
+      "node_name": "rule_prescreen",
+      "event_type": "completed",
+      "input_snapshot": null,
+      "output_snapshot": {"rule_score": 75, "rule_level": "A"},
+      "error_message": null,
+      "duration_ms": 120,
+      "llm_tokens_used": null,
+      "llm_cost_estimate": null,
+      "created_at": "2026-06-01T10:00:00"
+    }
+  ]
+}
+```
+
+### 36.7 恢复暂停的工作流
+
+`POST /api/workflows/runs/{workflow_id}/resume`
+
+请求体：
+
+```json
+{
+  "approved": true,
+  "review_comment": "审核通过",
+  "modified_content": "修改后的话术内容"
+}
+```
+
+行为：恢复因风险门控而暂停的工作流。`approved=true` 时继续执行，`approved=false` 时标记为拒绝。
+
+响应：`success_response(WorkflowRunOut)`
+
+---
+
+## 三十七、审批队列 Approvals
+
+路由前缀：`/api/approvals`
+
+所有接口需要认证。管理工作流中因合规风险而暂停的待审批内容。
+
+### 37.1 审批列表
+
+`GET /api/approvals`
+
+查询参数：
+
+- `status_filter`（可选）：`pending` / `approved` / `rejected`
+- `risk_level`（可选）：`low` / `medium` / `high` / `critical`
+- `content_type`（可选）：`follow_up_script` / `draft`
+- `page` / `page_size`
+
+响应：`paginated([ApprovalQueueOut])`。
+
+`ApprovalQueueOut` 字段：`id, user_id, workflow_id, workflow_type, content_type, content_id, content_snapshot, risk_level, compliance_result, status, reviewer_id, review_comment, reviewed_at, created_at`。
+
+- `content_type`：内容类型，`follow_up_script`（跟进话术）或 `draft`（草稿）
+- `status`：`pending` / `approved` / `rejected`
+- `risk_level`：风险等级，由工作流合规检查节点输出
+
+### 37.2 待审计数
+
+`GET /api/approvals/pending-count`
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "pending_count": 3
+  }
+}
+```
+
+### 37.3 审批详情
+
+`GET /api/approvals/{approval_id}`
+
+响应：`success_response(ApprovalQueueOut)`
+
+### 37.4 审批操作
+
+`POST /api/approvals/{approval_id}/review`
+
+请求体：
+
+```json
+{
+  "approved": true,
+  "review_comment": "话术合规，可以发送",
+  "modified_content": "修改后的话术（可选）"
+}
+```
+
+行为：
+- `approved=true`：通过审批。如提供 `modified_content`，使用修改后的内容替换原内容
+- `approved=false`：拒绝审批
+- 仅 `pending` 状态的记录可审批
+
+响应：`success_response(ApprovalQueueOut)`

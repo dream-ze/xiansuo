@@ -34,5 +34,11 @@ class LeadOut(BaseModel):
     duplicate_group_id: str | None = None
     duplicate_reason: str | None = None
     comment_publish_time: datetime | None = None
+    ai_identified: bool = False
+    ai_confidence: float | None = None
+    ai_demand_summary: str | None = None
+    ai_key_evidence: Any | None = None
+    ai_reasoning: str | None = None
+    workflow_id: str | None = None
     created_at: datetime
     updated_at: datetime

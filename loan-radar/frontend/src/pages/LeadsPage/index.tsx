@@ -17,10 +17,10 @@ const STATUS_LABELS: Record<string, string> = { new: "新线索", contacted: "�
 const STATUS_COLORS: Record<string, string> = { new: "blue", contacted: "orange", interested: "green", invalid: "default", converted: "cyan" };
 
 const RISK_CONFIG: Record<string, { bg: string; border: string; color: string }> = {
-  A: { bg: "#FFF1F0", border: "#FFCCC7", color: "#CF1322" },
-  B: { bg: "#E6F7FF", border: "#91D5FF", color: "#0958D9" },
-  C: { bg: "#FFFBE6", border: "#FFE58F", color: "#D48806" },
-  D: { bg: "#F5F5F5", border: "#D9D9D9", color: "#8C8C8C" },
+  A: { bg: "rgba(255,69,96,0.15)", border: "rgba(255,69,96,0.3)", color: "#ff4560" },
+  B: { bg: "rgba(0,212,255,0.12)", border: "rgba(0,212,255,0.3)", color: "#00d4ff" },
+  C: { bg: "rgba(255,176,32,0.12)", border: "rgba(255,176,32,0.3)", color: "#ffb020" },
+  D: { bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.45)" },
 };
 
 function RiskBadge({ level }: { level: string }) {

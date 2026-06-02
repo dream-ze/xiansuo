@@ -20,6 +20,7 @@ import asyncio
 import subprocess
 import signal
 import os
+import sys
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,7 @@ class CrawlerManager:
         self.status = "idle"
         self.started_at: Optional[datetime] = None
         self.current_config: Optional[CrawlerStartRequest] = None
+        self.last_error_message: Optional[str] = None
         self._log_id = 0
         self._logs: List[LogEntry] = []
         self._read_task: Optional[asyncio.Task] = None
@@ -101,6 +103,7 @@ class CrawlerManager:
             # Clear old logs
             self._logs = []
             self._log_id = 0
+            self.last_error_message = None
 
             # Clear pending queue (don't replace object to avoid WebSocket broadcast coroutine holding old queue reference)
             if self._log_queue is None:
@@ -148,6 +151,7 @@ class CrawlerManager:
                 return True
             except Exception as e:
                 self.status = "error"
+                self.last_error_message = f"Failed to start crawler: {str(e)}"
                 entry = self._create_log_entry(f"Failed to start crawler: {str(e)}", "error")
                 await self._push_log(entry)
                 return False
@@ -201,12 +205,22 @@ class CrawlerManager:
             "platform": self.current_config.platform.value if self.current_config else None,
             "crawler_type": self.current_config.crawler_type.value if self.current_config else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "error_message": None
+            "error_message": self.last_error_message
         }
 
     def _build_command(self, config: CrawlerStartRequest) -> list:
         """Build main.py command line arguments"""
-        cmd = ["python", "main.py"]
+        project_root = str(self._project_root)
+        bootstrap = (
+            "import os, runpy, sys; "
+            f"project_root = {project_root!r}; "
+            "sys.path.insert(0, project_root); "
+            "os.chdir(project_root); "
+            "script = sys.argv[1]; "
+            "sys.argv = sys.argv[1:]; "
+            "runpy.run_path(script, run_name='__main__')"
+        )
+        cmd = [sys.executable, "-c", bootstrap, "main.py"]
 
         cmd.extend(["--platform", config.platform.value])
         cmd.extend(["--lt", config.login_type.value])
@@ -250,6 +264,8 @@ class CrawlerManager:
                     line = line.strip()
                     if line:
                         level = self._parse_log_level(line)
+                        if level == "error":
+                            self.last_error_message = line
                         entry = self._create_log_entry(line, level)
                         await self._push_log(entry)
 
@@ -261,8 +277,11 @@ class CrawlerManager:
                 if remaining:
                     for line in remaining.strip().split('\n'):
                         if line.strip():
+                            line = line.strip()
                             level = self._parse_log_level(line)
-                            entry = self._create_log_entry(line.strip(), level)
+                            if level == "error":
+                                self.last_error_message = line
+                            entry = self._create_log_entry(line, level)
                             await self._push_log(entry)
 
             # Process ended
@@ -272,7 +291,10 @@ class CrawlerManager:
                     entry = self._create_log_entry("Crawler completed successfully", "success")
                     self.status = "idle"
                 else:
-                    entry = self._create_log_entry(f"Crawler exited with code: {exit_code}", "error")
+                    message = f"Crawler exited with code: {exit_code}"
+                    if not self.last_error_message:
+                        self.last_error_message = message
+                    entry = self._create_log_entry(message, "error")
                     self.status = "error"
                 await self._push_log(entry)
 

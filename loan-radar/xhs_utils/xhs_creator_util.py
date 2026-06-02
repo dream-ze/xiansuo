@@ -1,9 +1,12 @@
 import json
 import os
 
-import execjs
+from xhs_utils.execjs_runtime import configure_hidden_execjs_subprocesses
 
+import execjs
 from xhs_utils.xhs_util import generate_x_b3_traceid, generate_xray_traceid, splice_str
+
+configure_hidden_execjs_subprocesses()
 
 _STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static'))
 

@@ -5,8 +5,12 @@ import random
 import time
 from urllib.parse import urlencode
 
+from xhs_utils.execjs_runtime import configure_hidden_execjs_subprocesses
+
 import execjs
 from xhs_utils.cookie_util import trans_cookies
+
+configure_hidden_execjs_subprocesses()
 
 _STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static'))
 

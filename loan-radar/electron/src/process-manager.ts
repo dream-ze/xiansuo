@@ -2,6 +2,12 @@ import { spawn, ChildProcess, execFile } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import {
+  buildDatabaseUrl,
+  buildPythonImportPath,
+  getEmbeddedPlaywrightNodeDir,
+  prependPathEntries,
+} from './desktop-config';
 
 const CREATE_NO_WINDOW = 0x08000000;
 
@@ -103,23 +109,64 @@ export class ProcessManager {
   private getEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env };
     const safePgDir = this.getSafePath(this.config.pgDir);
+    const pythonImportPath = this.getPythonImportPath();
+    const pathEntries: string[] = [];
 
     if (this.config.pythonDir) {
-      env.PATH = `${this.config.pythonDir};${this.config.pythonDir}\\Scripts;${env.PATH}`;
+      const embeddedNodeDir = getEmbeddedPlaywrightNodeDir(this.config.pythonDir);
+      pathEntries.push(this.config.pythonDir, path.join(this.config.pythonDir, 'Scripts'));
+      if (fs.existsSync(path.join(embeddedNodeDir, 'node.exe'))) {
+        pathEntries.unshift(embeddedNodeDir);
+        env.EXECJS_RUNTIME = 'Node';
+      }
     }
     if (fs.existsSync(this.config.pgDir)) {
-      env.PATH = `${safePgDir}\\bin;${env.PATH}`;
+      pathEntries.push(path.join(safePgDir, 'bin'));
     }
+
+    const ffmpegDir = path.join(path.dirname(this.config.pgDir), 'ffmpeg');
+    if (fs.existsSync(path.join(ffmpegDir, 'ffmpeg.exe'))) {
+      pathEntries.push(ffmpegDir);
+    }
+
+    env.PATH = prependPathEntries(env.PATH, pathEntries);
 
     env.MEDIA_CRAWLER_HOME = this.config.mediacrawlerDir;
     env.FRONTEND_SERVE_STATIC = 'true';
     env.FRONTEND_BUILD_DIR = this.config.frontendDir;
-    env.DATABASE_URL = `postgresql+psycopg2://loan_radar:loan_radar_password@127.0.0.1:${this.config.pgPort}/loan_radar`;
-    env.PYTHONPATH = [this.config.backendDir, this.config.mediacrawlerDir, this.config.apisDir, this.config.xhsUtilsDir].join(';');
+    env.DATABASE_URL = buildDatabaseUrl(this.config.pgPort);
+    env.LOAN_RADAR_PYTHONPATH = pythonImportPath;
+    env.PYTHONPATH = pythonImportPath;
     env.PYTHONIOENCODING = 'utf-8';
     env.STATIC_DIR = this.config.staticDir;
 
+    const toolsDir = path.dirname(this.config.pgDir);
+    if (fs.existsSync(toolsDir)) {
+      env.LOAN_RADAR_TOOLS_DIR = toolsDir;
+    }
+
     return env;
+  }
+
+  private getPythonImportPath(): string {
+    return buildPythonImportPath([
+      this.config.backendDir,
+      this.config.mediacrawlerDir,
+      path.dirname(this.config.apisDir),
+      this.config.apisDir,
+      this.config.xhsUtilsDir,
+    ]);
+  }
+
+  private getPythonModuleArgs(moduleName: string, moduleArgs: string[]): string[] {
+    const bootstrap = [
+      'import os, runpy, sys',
+      'paths = [p for p in os.environ.get("LOAN_RADAR_PYTHONPATH", "").split(os.pathsep) if p]',
+      'sys.path[:0] = [p for p in paths if p not in sys.path]',
+      'sys.argv = [sys.argv[1]] + sys.argv[2:]',
+      'runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)',
+    ].join('; ');
+    return ['-c', bootstrap, moduleName, ...moduleArgs];
   }
 
   private spawnHidden(command: string, args: string[], options: any): ChildProcess {
@@ -134,8 +181,47 @@ export class ProcessManager {
     return spawn(command, args, opts);
   }
 
+  private configurePostgreSQLDataDir(pgData: string): void {
+    const pgHba = path.join(pgData, 'pg_hba.conf');
+    if (fs.existsSync(pgHba)) {
+      try {
+        let content = fs.readFileSync(pgHba, 'utf-8');
+        content = content.replace(/^host\s+.*$/gm, '');
+        content = content.replace(/^local\s+.*$/gm, '');
+        content = content.trim() + '\n';
+        content += 'local   all   all   trust\n';
+        content += 'host    all   all   127.0.0.1/32   trust\n';
+        content += 'host    all   all   ::1/128   trust\n';
+        fs.writeFileSync(pgHba, content, 'utf-8');
+        console.log('[PostgreSQL] pg_hba.conf configured for TCP/IP access');
+      } catch (err) {
+        console.warn('[PostgreSQL] Failed to update pg_hba.conf:', err);
+      }
+    }
+
+    const pgConf = path.join(pgData, 'postgresql.conf');
+    if (fs.existsSync(pgConf)) {
+      try {
+        let content = fs.readFileSync(pgConf, 'utf-8');
+        content = content.replace(/^#?listen_addresses\s*=.*$/m, "listen_addresses = '127.0.0.1'");
+        content = content.replace(/^#?port\s*=.*$/m, `port = ${this.config.pgPort}`);
+        if (!content.includes('listen_addresses')) {
+          content += "\nlisten_addresses = '127.0.0.1'\n";
+        }
+        if (!/^port\s*=/m.test(content)) {
+          content += `\nport = ${this.config.pgPort}\n`;
+        }
+        fs.writeFileSync(pgConf, content, 'utf-8');
+        console.log(`[PostgreSQL] postgresql.conf configured on port ${this.config.pgPort}`);
+      } catch (err) {
+        console.warn('[PostgreSQL] Failed to update postgresql.conf:', err);
+      }
+    }
+  }
+
   async initPostgreSQL(pgData: string): Promise<void> {
     if (fs.existsSync(path.join(pgData, 'PG_VERSION'))) {
+      this.configurePostgreSQLDataDir(pgData);
       return;
     }
 
@@ -174,37 +260,7 @@ export class ProcessManager {
 
       proc.on('close', (code) => {
         if (code === 0) {
-          const pgHba = path.join(pgData, 'pg_hba.conf');
-          if (fs.existsSync(pgHba)) {
-            try {
-              let content = fs.readFileSync(pgHba, 'utf-8');
-              content = content.replace(/^host\s+.*$/gm, '');
-              content = content.replace(/^local\s+.*$/gm, '');
-              content = content.trim() + '\n';
-              content += 'local   all   all   trust\n';
-              content += 'host    all   all   127.0.0.1/32   trust\n';
-              content += 'host    all   all   ::1/128   trust\n';
-              fs.writeFileSync(pgHba, content, 'utf-8');
-              console.log('[PostgreSQL] pg_hba.conf configured for TCP/IP access');
-            } catch (err) {
-              console.warn('[PostgreSQL] Failed to update pg_hba.conf:', err);
-            }
-          }
-          const pgConf = path.join(pgData, 'postgresql.conf');
-          if (fs.existsSync(pgConf)) {
-            try {
-              let content = fs.readFileSync(pgConf, 'utf-8');
-              content = content.replace(/^#?listen_addresses\s*=.*$/m, "listen_addresses = '127.0.0.1'");
-              content = content.replace(/^#?port\s*=.*$/m, `port = ${this.config.pgPort}`);
-              if (!content.includes('listen_addresses')) {
-                content += "\nlisten_addresses = '127.0.0.1'\n";
-              }
-              fs.writeFileSync(pgConf, content, 'utf-8');
-              console.log('[PostgreSQL] postgresql.conf configured');
-            } catch (err) {
-              console.warn('[PostgreSQL] Failed to update postgresql.conf:', err);
-            }
-          }
+          this.configurePostgreSQLDataDir(pgData);
           resolve();
         } else {
           reject(new Error(`initdb failed (code ${code}): ${stderr}`));
@@ -241,7 +297,7 @@ export class ProcessManager {
     const env = this.getEnv();
 
     return new Promise<void>((resolve, reject) => {
-      const proc = this.spawnHidden(python, ['-m', 'alembic', 'upgrade', 'head'], {
+      const proc = this.spawnHidden(python, this.getPythonModuleArgs('alembic', ['upgrade', 'head']), {
         cwd: this.config.backendDir,
         env,
         stdio: 'pipe',
@@ -327,6 +383,7 @@ export class ProcessManager {
     if (!fs.existsSync(path.join(this.config.pgData, 'PG_VERSION'))) {
       throw new Error(`PostgreSQL data directory is not initialized: ${this.config.pgData}`);
     }
+    this.configurePostgreSQLDataDir(this.config.pgData);
 
     const logDir = this.getLogDir();
     const logFile = path.join(logDir, 'pg.log');
@@ -411,12 +468,11 @@ export class ProcessManager {
     const logFile = path.join(logDir, 'backend.log');
     const logFd = fs.openSync(logFile, 'a');
 
-    const proc = this.spawnHidden(pythonw, [
-      '-m', 'uvicorn',
+    const proc = this.spawnHidden(pythonw, this.getPythonModuleArgs('uvicorn', [
       'app.main:app',
       '--host', '127.0.0.1',
       '--port', String(this.config.port),
-    ], {
+    ]), {
       cwd: this.config.backendDir,
       env,
       stdio: ['ignore', logFd, logFd],
@@ -448,12 +504,11 @@ export class ProcessManager {
     const logFile = path.join(logDir, 'mediacrawler.log');
     const logFd = fs.openSync(logFile, 'a');
 
-    const proc = this.spawnHidden(pythonw, [
-      '-m', 'uvicorn',
+    const proc = this.spawnHidden(pythonw, this.getPythonModuleArgs('uvicorn', [
       'api.main:app',
       '--host', '127.0.0.1',
       '--port', '8080',
-    ], {
+    ]), {
       cwd: this.config.mediacrawlerDir,
       env,
       stdio: ['ignore', logFd, logFd],

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -27,6 +27,10 @@ class PublishJob(Base):
     external_note_id: Mapped[str] = mapped_column(String(128), default="")
     publish_error: Mapped[str] = mapped_column(Text, default="")
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    compliance_result: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    risk_level: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(32), default="not_required")
+    workflow_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=shanghai_now)
 
 

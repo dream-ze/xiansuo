@@ -25,6 +25,10 @@ class AiDraft(Base):
     source_note_id: Mapped[Optional[int]] = mapped_column(ForeignKey("notes.id"), nullable=True)
     intent: Mapped[str] = mapped_column(String(32), default="publish")
     status: Mapped[str] = mapped_column(String(32), default="draft")
+    compliance_result: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    risk_level: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(32), default="not_required")
+    workflow_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=shanghai_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=shanghai_now, onupdate=shanghai_now)
 

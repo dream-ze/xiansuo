@@ -5,6 +5,8 @@ import hashlib
 import binascii
 import json
 
+from xhs_utils.execjs_runtime import configure_hidden_execjs_subprocesses
+
 import execjs
 import requests
 from loguru import logger

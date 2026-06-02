@@ -35,6 +35,12 @@ class Lead(Base):
     duplicate_group_id = Column(String(64), nullable=True, index=True)
     duplicate_reason = Column(String(255), nullable=True)
     comment_publish_time = Column(DateTime(timezone=True), nullable=True, index=True)
+    ai_identified = Column(Boolean, nullable=False, default=False, index=True)
+    ai_confidence = Column(Float, nullable=True)
+    ai_demand_summary = Column(Text, nullable=True)
+    ai_key_evidence = Column(JSON, nullable=True)
+    ai_reasoning = Column(Text, nullable=True)
+    workflow_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

@@ -13,6 +13,19 @@ type QrLoginPanelProps = {
   onConfirmed: (account: PlatformAccount) => void;
 };
 
+export function getQrLoginErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === "string" && detail) {
+      return detail;
+    }
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "二维码生成失败，请稍后重试。";
+}
+
 export function QrLoginPanel({ accountType, onConfirmed }: QrLoginPanelProps) {
   const [session, setSession] = useState<XhsQrLoginSession | null>(null);
   const [statusText, setStatusText] = useState("准备生成二维码");
@@ -20,16 +33,6 @@ export function QrLoginPanel({ accountType, onConfirmed }: QrLoginPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [syncCreator, setSyncCreator] = useState(false);
   const confirmedRef = useRef(false);
-
-  function errorMessage(error: unknown): string {
-    if (axios.isAxiosError(error)) {
-      const detail = error.response?.data?.detail;
-      if (typeof detail === "string" && detail) {
-        return detail;
-      }
-    }
-    return "二维码生成失败，请稍后重试。";
-  }
 
   async function startSession() {
     setIsLoading(true);
@@ -43,7 +46,7 @@ export function QrLoginPanel({ accountType, onConfirmed }: QrLoginPanelProps) {
       setSession(nextSession);
       setStatusText(accountType === "pc" ? "请使用小红书 App 扫描二维码" : "请使用小红书 App 扫描 Creator 二维码");
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(getQrLoginErrorMessage(caught));
     } finally {
       setIsLoading(false);
     }

@@ -86,6 +86,36 @@ if (-not (Test-Path $PgDir)) {
 Write-Host "  [OK] PostgreSQL portable ready"
 Write-Host ""
 
+# [3.5/6] Download ffmpeg
+Write-Host "[3.5/6] Preparing ffmpeg ..."
+$FfmpegDir = "$ToolsDir\ffmpeg"
+
+if (-not (Test-Path "$FfmpegDir\ffmpeg.exe")) {
+    $FfmpegZip = "$env:TEMP\ffmpeg-release-essentials.zip"
+    if (-not (Test-Path $FfmpegZip)) {
+        Write-Host "  Downloading ffmpeg essentials build ..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $FfmpegZip -UseBasicParsing
+    }
+    Write-Host "  Extracting ffmpeg ..."
+    $tempExtract = "$env:TEMP\ffmpeg-extract"
+    if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
+    Expand-Archive -Path $FfmpegZip -DestinationPath $tempExtract -Force
+    New-Item -ItemType Directory -Path $FfmpegDir -Force | Out-Null
+    $binDir = Get-ChildItem "$tempExtract\*essentials*\bin" -Directory | Select-Object -First 1
+    if ($binDir) {
+        Copy-Item "$($binDir.FullName)\ffmpeg.exe" "$FfmpegDir\" -Force
+        Copy-Item "$($binDir.FullName)\ffprobe.exe" "$FfmpegDir\" -Force
+    }
+    Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path "$FfmpegDir\ffmpeg.exe") {
+    Write-Host "  [OK] ffmpeg ready"
+} else {
+    Write-Host "  [WARN] ffmpeg not found - video cover extraction will not work"
+}
+Write-Host ""
+
 # [4/6] Install Electron dependencies
 Write-Host "[4/6] Installing Electron dependencies ..."
 Set-Location $ElectronDir

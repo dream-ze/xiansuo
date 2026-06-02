@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
@@ -23,6 +25,42 @@ from app.utils.response import success_response
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/video-studio", tags=["video-studio"])
+
+
+def _find_ffmpeg() -> str | None:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+    extra_dirs = []
+    tools_root = os.environ.get("LOAN_RADAR_TOOLS_DIR", "")
+    if tools_root:
+        extra_dirs.append(os.path.join(tools_root, "ffmpeg"))
+    resources_path = os.environ.get("ELECTRON_RESOURCES_PATH", "")
+    if resources_path:
+        extra_dirs.append(os.path.join(resources_path, "tools", "ffmpeg"))
+    for candidate in extra_dirs:
+        exe = os.path.join(candidate, "ffmpeg.exe") if os.name == "nt" else os.path.join(candidate, "ffmpeg")
+        if os.path.isfile(exe):
+            return exe
+    return None
+
+
+def _find_ffprobe() -> str | None:
+    ffprobe_path = shutil.which("ffprobe")
+    if ffprobe_path:
+        return ffprobe_path
+    extra_dirs = []
+    tools_root = os.environ.get("LOAN_RADAR_TOOLS_DIR", "")
+    if tools_root:
+        extra_dirs.append(os.path.join(tools_root, "ffmpeg"))
+    resources_path = os.environ.get("ELECTRON_RESOURCES_PATH", "")
+    if resources_path:
+        extra_dirs.append(os.path.join(resources_path, "tools", "ffmpeg"))
+    for candidate in extra_dirs:
+        exe = os.path.join(candidate, "ffprobe.exe") if os.name == "nt" else os.path.join(candidate, "ffprobe")
+        if os.path.isfile(exe):
+            return exe
+    return None
 
 
 def _media_dir() -> Path:
@@ -73,9 +111,12 @@ def _validate_video_owner(file_name: str, user: User) -> str:
 
 
 def _ffprobe_duration(video_path: Path) -> float:
+    ffprobe = _find_ffprobe()
+    if not ffprobe:
+        return 0.0
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(video_path)],
+            [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", str(video_path)],
             capture_output=True, text=True, timeout=10,
         )
         info = json.loads(result.stdout)
@@ -85,9 +126,12 @@ def _ffprobe_duration(video_path: Path) -> float:
 
 
 def _ffmpeg_extract_frame(video_path: Path, output_path: Path, timestamp: float, width: int, height: int) -> bool:
+    ffmpeg = _find_ffmpeg()
+    if not ffmpeg:
+        return False
     try:
         cmd = [
-            "ffmpeg", "-y",
+            ffmpeg, "-y",
             "-ss", str(timestamp),
             "-i", str(video_path),
             "-vframes", "1",

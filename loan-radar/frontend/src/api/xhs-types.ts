@@ -210,6 +210,8 @@ export type Draft = {
   body: string;
   tags?: { id?: string; name: string }[];
   source_note_id?: number | null;
+  intent?: string;
+  status?: string;
   created_at: string;
 };
 

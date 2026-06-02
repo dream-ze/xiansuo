@@ -6,6 +6,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node test/desktop-config.test.js",
     "start": "npm run build && electron dist/main.js",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",

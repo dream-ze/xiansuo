@@ -78,8 +78,11 @@ def _serialize_draft(draft: AiDraft) -> dict:
         "id": draft.id,
         "platform": draft.platform,
         "title": draft.title,
-        "body": draft.body,
+        "body": draft.body or draft.content or "",
+        "tags": draft.tags or [],
         "source_note_id": draft.source_note_id,
+        "intent": draft.intent,
+        "status": draft.status,
         "created_at": draft.created_at.isoformat(),
     }
 

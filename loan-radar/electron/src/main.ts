@@ -1,16 +1,19 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, dialog } from 'electron';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import * as net from 'net';
 import * as fs from 'fs';
 import { ProcessManager } from './process-manager';
+import { DEFAULT_APP_PORT, DEFAULT_MEDIA_CRAWLER_PORT, DEFAULT_POSTGRES_PORT } from './desktop-config';
 
+const CREATE_NO_WINDOW = 0x08000000;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let processManager: ProcessManager | null = null;
 let isQuitting = false;
 
-const APP_PORT = 8001;
-const MEDIA_CRAWLER_PORT = 8080;
+const APP_PORT = DEFAULT_APP_PORT;
+const MEDIA_CRAWLER_PORT = DEFAULT_MEDIA_CRAWLER_PORT;
 const APP_HOST = '127.0.0.1';
 const APP_URL = `http://${APP_HOST}:${APP_PORT}`;
 
@@ -79,35 +82,42 @@ function checkBackendHealth(): Promise<boolean> {
   });
 }
 
-function killProcessOnPort(port: number): Promise<void> {
+function runHiddenCommand(command: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
-    const { exec } = require('child_process');
-    exec(`netstat -ano | findstr ":${port}" | findstr "LISTENING"`, (err: any, stdout: string) => {
-      if (err || !stdout.trim()) {
-        resolve();
-        return;
-      }
-      const lines = stdout.trim().split('\n');
-      const pids = new Set<string>();
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && /^\d+$/.test(pid)) {
-          pids.add(pid);
-        }
-      }
-      if (pids.size === 0) {
-        resolve();
-        return;
-      }
-      let pending = pids.size;
-      for (const pid of pids) {
-        exec(`taskkill /PID ${pid} /F`, () => {
-          pending--;
-          if (pending === 0) resolve();
-        });
-      }
+    const options: any = {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    };
+    if (process.platform === 'win32') {
+      options.creationFlags = CREATE_NO_WINDOW;
+    }
+    const proc = spawn(command, args, options);
+    let stdout = '';
+    proc.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString();
     });
+    proc.on('error', () => resolve(stdout));
+    proc.on('close', () => resolve(stdout));
+  });
+}
+
+function killProcessOnPort(port: number): Promise<void> {
+  return runHiddenCommand('netstat', ['-ano']).then(async (stdout) => {
+    const pids = new Set<string>();
+    for (const line of stdout.split(/\r?\n/)) {
+      if (!line.includes('LISTENING') || !line.includes(`:${port}`)) {
+        continue;
+      }
+      const parts = line.trim().split(/\s+/);
+      const localAddress = parts[1] || '';
+      const pid = parts[parts.length - 1];
+      if ((localAddress.endsWith(`:${port}`) || localAddress.includes(`:${port} `)) && /^\d+$/.test(pid)) {
+        pids.add(pid);
+      }
+    }
+    await Promise.all(
+      [...pids].map((pid) => runHiddenCommand('taskkill', ['/PID', pid, '/F']))
+    );
   });
 }
 
@@ -306,7 +316,7 @@ async function startApplication(): Promise<void> {
     staticDir: getResourcePath('static'),
     frontendDir,
     port: APP_PORT,
-    pgPort: 5432,
+    pgPort: DEFAULT_POSTGRES_PORT,
     isDev,
   });
 

@@ -47,6 +47,11 @@ import type { AutoTask, AutoTaskRunResult, PlatformAccount } from "../../api/xhs
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
+const CYAN = "#00d4ff";
+const GREEN = "#00e396";
+const RED = "#ff4560";
+const AMBER = "#ffb020";
+
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   active: { color: "green", label: "运行中" },
   paused: { color: "default", label: "已暂停" },
@@ -58,14 +63,31 @@ function getStatusTag(s: string) {
   return <Tag color={cfg.color}>{cfg.label}</Tag>;
 }
 
-const panelStyle: React.CSSProperties = {
-  background: "#FFFFFF",
+const techPanelStyle: React.CSSProperties = {
+  background: "rgba(17,24,39,0.75)",
   borderRadius: 8,
-  border: "1px solid #E8E8E8",
+  border: "1px solid rgba(0,212,255,0.1)",
+  backdropFilter: "blur(8px)",
+  boxShadow: "0 0 12px rgba(0,212,255,0.05)",
+};
+
+const techPanelHeaderStyle: React.CSSProperties = {
+  borderBottom: "1px solid rgba(0,212,255,0.08)",
+  color: CYAN,
 };
 
 const cardBodyStyle: React.CSSProperties = {
   padding: 16,
+};
+
+const formItemStyle: React.CSSProperties = {
+  marginBottom: 14,
+};
+
+const inputStyle: React.CSSProperties = {
+  background: "rgba(0,212,255,0.04)",
+  border: "1px solid rgba(0,212,255,0.12)",
+  borderRadius: 6,
 };
 
 export function AutoOpsPage() {
@@ -76,7 +98,6 @@ export function AutoOpsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Create form state
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createKeywords, setCreateKeywords] = useState("");
@@ -89,7 +110,6 @@ export function AutoOpsPage() {
   const [createIntervalHours, setCreateIntervalHours] = useState<number>(24);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Edit modal state
   const [editTask, setEditTask] = useState<AutoTask | null>(null);
   const [editName, setEditName] = useState("");
   const [editKeywords, setEditKeywords] = useState("");
@@ -100,7 +120,6 @@ export function AutoOpsPage() {
   const [editIntervalHours, setEditIntervalHours] = useState(24);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Run state
   const [runningTaskId, setRunningTaskId] = useState<number | null>(null);
   const [lastRunResult, setLastRunResult] = useState<AutoTaskRunResult | null>(null);
 
@@ -295,22 +314,21 @@ export function AutoOpsPage() {
         <Alert type="success" message={message} showIcon closable onClose={() => setMessage(null)} />
       )}
 
-      {/* Task List */}
       {isLoading ? (
-        <Card style={panelStyle} styles={{ body: cardBodyStyle }}>
+        <Card style={techPanelStyle} styles={{ body: cardBodyStyle }}>
           <div style={{ textAlign: "center", padding: 48 }}>
             <Spin size="large" />
-            <Paragraph style={{ color: "#8c8c8c", marginTop: 16 }}>正在加载自动运营任务...</Paragraph>
+            <Paragraph style={{ color: "rgba(255,255,255,0.35)", marginTop: 16 }}>正在加载自动运营任务...</Paragraph>
           </div>
         </Card>
       ) : tasks.length === 0 && !showCreate ? (
-        <Card style={panelStyle} styles={{ body: cardBodyStyle }}>
+        <Card style={techPanelStyle} styles={{ body: cardBodyStyle }}>
           <Empty
-            image={<ThunderboltOutlined style={{ fontSize: 48, color: "#8c8c8c" }} />}
+            image={<ThunderboltOutlined style={{ fontSize: 48, color: "rgba(0,212,255,0.3)", filter: "drop-shadow(0 0 8px rgba(0,212,255,0.2))" }} />}
             imageStyle={{ height: 64 }}
             description={
               <div>
-                <Text strong style={{ fontSize: 16 }}>
+                <Text strong style={{ fontSize: 16, color: "rgba(255,255,255,0.55)" }}>
                   暂无自动运营任务
                 </Text>
                 <br />
@@ -324,44 +342,47 @@ export function AutoOpsPage() {
           {tasks.map((task) => (
             <Col xs={24} md={12} xl={8} key={task.id}>
               <Card
-                style={panelStyle}
-                styles={{ body: cardBodyStyle, header: { borderBottom: "1px solid #E8E8E8" } }}
+                style={techPanelStyle}
+                styles={{ body: cardBodyStyle, header: techPanelHeaderStyle }}
                 title={
                   <Space>
-                    <ThunderboltOutlined style={{ color: task.status === "active" ? "#52c41a" : "#8c8c8c" }} />
-                    <Text ellipsis style={{ maxWidth: 180 }}>
+                    <ThunderboltOutlined style={{ color: task.status === "active" ? GREEN : "rgba(255,255,255,0.3)", filter: task.status === "active" ? "drop-shadow(0 0 4px rgba(0,227,150,0.5))" : "none" }} />
+                    <Text ellipsis style={{ maxWidth: 180, color: "rgba(255,255,255,0.85)" }}>
                       {task.name}
                     </Text>
                   </Space>
                 }
                 extra={getStatusTag(task.status)}
               >
-                {/* Keywords */}
                 <div style={{ marginBottom: 12 }}>
                   <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>
                     关键词
                   </Text>
                   <Space size={4} wrap>
                     {(task.keywords || []).map((kw) => (
-                      <Tag key={kw} color="blue">
+                      <Tag key={kw} style={{
+                        margin: 0,
+                        background: "rgba(0,212,255,0.08)",
+                        border: "1px solid rgba(0,212,255,0.2)",
+                        color: CYAN,
+                        fontSize: 11,
+                      }}>
                         {kw}
                       </Tag>
                     ))}
                   </Space>
                 </div>
 
-                {/* Stats */}
                 <Row gutter={16} style={{ marginBottom: 12 }}>
                   <Col xs={24} sm={8}>
                     <Statistic
                       title="已发布"
                       value={task.total_published}
-                      valueStyle={{ fontSize: 20, color: "#e8e8e8" }}
+                      valueStyle={{ fontSize: 20, color: CYAN, textShadow: "0 0 8px rgba(0,212,255,0.2)" }}
                     />
                   </Col>
                 </Row>
 
-                {/* Time info */}
                 <Space direction="vertical" size={2} style={{ width: "100%", marginBottom: 12 }}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     <ClockCircleOutlined style={{ marginRight: 4 }} />
@@ -376,7 +397,6 @@ export function AutoOpsPage() {
                   </Text>
                 </Space>
 
-                {/* AI instruction preview */}
                 {task.ai_instruction && (
                   <div style={{ marginBottom: 12 }}>
                     <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 2 }}>
@@ -392,7 +412,6 @@ export function AutoOpsPage() {
                   </div>
                 )}
 
-                {/* Schedule info */}
                 <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
                   调度：{scheduleDesc(task)}
                 </Text>
@@ -402,7 +421,6 @@ export function AutoOpsPage() {
                   </Text>
                 )}
 
-                {/* Actions */}
                 <Space wrap style={{ marginTop: 8 }}>
                   <Button
                     type="primary"
@@ -445,17 +463,16 @@ export function AutoOpsPage() {
         </Row>
       )}
 
-      {/* Last Run Result */}
       {lastRunResult && (
         <Card
           title={
             <Space>
-              <CheckCircleOutlined style={{ color: "#52c41a" }} />
-              <span>最近一次执行结果</span>
+              <CheckCircleOutlined style={{ color: GREEN, filter: "drop-shadow(0 0 4px rgba(0,227,150,0.5))" }} />
+              <span style={{ color: CYAN }}>最近一次执行结果</span>
             </Space>
           }
-          style={panelStyle}
-          styles={{ body: cardBodyStyle, header: { borderBottom: "1px solid #E8E8E8" } }}
+          style={techPanelStyle}
+          styles={{ body: cardBodyStyle, header: techPanelHeaderStyle }}
         >
           <Descriptions column={{ xs: 1, md: 2, lg: 4 }} size="small">
             <Descriptions.Item label="关键词">{lastRunResult.keyword}</Descriptions.Item>
@@ -492,19 +509,18 @@ export function AutoOpsPage() {
         </Card>
       )}
 
-      {/* Create Form */}
       {showCreate && (
         <Card
           title={
             <Space>
-              <PlusOutlined />
-              <span>新建自动运营任务</span>
+              <PlusOutlined style={{ color: CYAN }} />
+              <span style={{ color: CYAN }}>◈ 新建自动运营任务</span>
             </Space>
           }
-          style={panelStyle}
-          styles={{ body: cardBodyStyle, header: { borderBottom: "1px solid #E8E8E8" } }}
+          style={techPanelStyle}
+          styles={{ body: { padding: "20px 24px" }, header: techPanelHeaderStyle }}
           extra={
-            <Button type="text" onClick={() => setShowCreate(false)}>
+            <Button type="text" onClick={() => setShowCreate(false)} style={{ color: "rgba(255,255,255,0.45)" }}>
               取消
             </Button>
           }
@@ -512,29 +528,31 @@ export function AutoOpsPage() {
           <Form layout="vertical">
             <Row gutter={16}>
               <Col xs={24} md={12}>
-                <Form.Item label="任务名称" required>
+                <Form.Item label="任务名称" required style={formItemStyle}>
                   <Input
                     placeholder="如：低卡早餐自动发布"
                     value={createName}
                     onChange={(e) => setCreateName(e.target.value)}
                     maxLength={128}
+                    style={inputStyle}
                   />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="关键词（每行一个）" required>
+                <Form.Item label="关键词（每行一个）" required style={formItemStyle}>
                   <TextArea
                     placeholder={"低卡早餐\n减脂食谱\n健康饮食"}
                     value={createKeywords}
                     onChange={(e) => setCreateKeywords(e.target.value)}
                     rows={3}
+                    style={inputStyle}
                   />
                 </Form.Item>
               </Col>
             </Row>
             <Row gutter={16}>
               <Col xs={24} md={12}>
-                <Form.Item label="PC 账号（用于抓取）" required>
+                <Form.Item label="PC 账号（用于抓取）" required style={formItemStyle}>
                   <Select
                     placeholder="选择 PC 账号"
                     value={createPcAccountId}
@@ -548,7 +566,7 @@ export function AutoOpsPage() {
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="Creator 账号（用于发布）" required>
+                <Form.Item label="Creator 账号（用于发布）" required style={formItemStyle}>
                   <Select
                     placeholder="选择 Creator 账号"
                     value={createCreatorAccountId}
@@ -562,17 +580,18 @@ export function AutoOpsPage() {
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item label="AI 改写指令（可选）">
+            <Form.Item label="AI 改写指令（可选）" style={formItemStyle}>
               <TextArea
                 placeholder="如：改写为种草风格，加入个人体验感受，适合 25-35 岁女性阅读"
                 value={createInstruction}
                 onChange={(e) => setCreateInstruction(e.target.value)}
                 rows={3}
                 maxLength={2000}
+                style={inputStyle}
               />
             </Form.Item>
 
-            <Form.Item label="调度方式">
+            <Form.Item label="调度方式" style={formItemStyle}>
               <Select value={createScheduleType} onChange={setCreateScheduleType} options={[
                 { value: "manual", label: "手动触发" },
                 { value: "daily", label: "每日定时" },
@@ -582,13 +601,13 @@ export function AutoOpsPage() {
             </Form.Item>
 
             {(createScheduleType === "daily" || createScheduleType === "weekly") && (
-              <Form.Item label="执行时间">
-                <Input value={createScheduleTime} onChange={(e) => setCreateScheduleTime(e.target.value)} placeholder="HH:MM" style={{ width: 120 }} />
+              <Form.Item label="执行时间" style={formItemStyle}>
+                <Input value={createScheduleTime} onChange={(e) => setCreateScheduleTime(e.target.value)} placeholder="HH:MM" style={{ width: 120, ...inputStyle }} />
               </Form.Item>
             )}
 
             {createScheduleType === "weekly" && (
-              <Form.Item label="执行日期">
+              <Form.Item label="执行日期" style={formItemStyle}>
                 <Checkbox.Group
                   value={createScheduleDays.split(",").filter(Boolean)}
                   onChange={(vals) => setCreateScheduleDays(vals.join(","))}
@@ -606,18 +625,27 @@ export function AutoOpsPage() {
             )}
 
             {createScheduleType === "interval" && (
-              <Form.Item label="间隔小时">
+              <Form.Item label="间隔小时" style={formItemStyle}>
                 <InputNumber min={1} max={168} value={createIntervalHours} onChange={(v) => setCreateIntervalHours(v ?? 24)} />
               </Form.Item>
             )}
 
-            <Form.Item>
+            <Form.Item style={{ marginBottom: 0, marginTop: 4 }}>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleCreate}
                 loading={isCreating}
                 block
+                style={{
+                  height: 40,
+                  borderRadius: 6,
+                  background: `linear-gradient(135deg, ${CYAN}, #0099cc)`,
+                  border: "none",
+                  boxShadow: `0 0 16px ${CYAN}30`,
+                  fontWeight: 600,
+                  fontSize: 14,
+                }}
               >
                 创建任务
               </Button>
@@ -627,46 +655,81 @@ export function AutoOpsPage() {
       )}
 
       {!showCreate && (
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreate(true)} block style={{ marginTop: 16 }}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setShowCreate(true)}
+          block
+          style={{
+            marginTop: 16,
+            height: 40,
+            borderRadius: 6,
+            background: `linear-gradient(135deg, ${CYAN}, #0099cc)`,
+            border: "none",
+            boxShadow: `0 0 16px ${CYAN}30`,
+            fontWeight: 600,
+          }}
+        >
           新建自动运营任务
         </Button>
       )}
 
-      {/* Edit Modal */}
       <Modal
-        title="编辑自动运营任务"
+        title={<span style={{ color: CYAN }}>◈ 编辑自动运营任务</span>}
         open={editTask !== null}
         onOk={handleSaveEdit}
         onCancel={() => setEditTask(null)}
         confirmLoading={isSaving}
         okText="保存"
         cancelText="取消"
+        styles={{
+          content: {
+            background: "rgba(17,24,39,0.95)",
+            border: "1px solid rgba(0,212,255,0.15)",
+            borderRadius: 12,
+            boxShadow: "0 0 30px rgba(0,212,255,0.1), 0 8px 32px rgba(0,0,0,0.5)",
+          },
+          header: {
+            background: "transparent",
+            borderBottom: "1px solid rgba(0,212,255,0.08)",
+          },
+          body: {
+            background: "transparent",
+          },
+          footer: {
+            background: "transparent",
+            borderTop: "1px solid rgba(0,212,255,0.08)",
+          },
+        }}
       >
         <Form layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="任务名称">
+          <Form.Item label="任务名称" style={formItemStyle}>
             <Input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               maxLength={128}
+              style={inputStyle}
             />
           </Form.Item>
-          <Form.Item label="关键词（每行一个）">
+          <Form.Item label="关键词（每行一个）" style={formItemStyle}>
             <TextArea
               value={editKeywords}
               onChange={(e) => setEditKeywords(e.target.value)}
               rows={3}
+              style={inputStyle}
             />
           </Form.Item>
-          <Form.Item label="AI 改写指令">
+          <Form.Item label="AI 改写指令" style={formItemStyle}>
             <TextArea
               value={editInstruction}
               onChange={(e) => setEditInstruction(e.target.value)}
               rows={3}
               maxLength={2000}
+              style={inputStyle}
             />
           </Form.Item>
 
-          <Form.Item label="调度方式">
+          <Form.Item label="调度方式" style={formItemStyle}>
             <Select value={editScheduleType} onChange={setEditScheduleType} options={[
               { value: "manual", label: "手动触发" },
               { value: "daily", label: "每日定时" },
@@ -676,13 +739,13 @@ export function AutoOpsPage() {
           </Form.Item>
 
           {(editScheduleType === "daily" || editScheduleType === "weekly") && (
-            <Form.Item label="执行时间">
-              <Input value={editScheduleTime} onChange={(e) => setEditScheduleTime(e.target.value)} placeholder="HH:MM" style={{ width: 120 }} />
+            <Form.Item label="执行时间" style={formItemStyle}>
+              <Input value={editScheduleTime} onChange={(e) => setEditScheduleTime(e.target.value)} placeholder="HH:MM" style={{ width: 120, ...inputStyle }} />
             </Form.Item>
           )}
 
           {editScheduleType === "weekly" && (
-            <Form.Item label="执行日期">
+            <Form.Item label="执行日期" style={formItemStyle}>
               <Checkbox.Group
                 value={editScheduleDays.split(",").filter(Boolean)}
                 onChange={(vals) => setEditScheduleDays(vals.join(","))}
@@ -700,7 +763,7 @@ export function AutoOpsPage() {
           )}
 
           {editScheduleType === "interval" && (
-            <Form.Item label="间隔小时">
+            <Form.Item label="间隔小时" style={formItemStyle}>
               <InputNumber min={1} max={168} value={editIntervalHours} onChange={(v) => setEditIntervalHours(v ?? 24)} />
             </Form.Item>
           )}

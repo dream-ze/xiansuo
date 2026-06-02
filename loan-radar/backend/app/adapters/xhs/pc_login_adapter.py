@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.adapters.xhs.request_env import direct_xhs_request_env
+
+logger = logging.getLogger(__name__)
 
 
 class XhsPcLoginAdapter:
     def create_qrcode(self) -> dict[str, Any]:
         with direct_xhs_request_env():
+            from xhs_utils.execjs_runtime import _ensure_node_in_path
+            _ensure_node_in_path()
             from apis.xhs_pc_login_apis import XHSLoginApi
 
             api = XHSLoginApi()

@@ -664,17 +664,17 @@ export function runDueAutoTasks(_platform = "xhs"): Promise<RunDueTasksResponse>
 }
 
 export function startQrLogin(): Promise<XhsQrLoginSession> {
-  return requestJson<XhsQrLoginSession>("/api/accounts/xhs/qr-login/start", { method: "POST" });
+  return requestJson<XhsQrLoginSession>("/api/xhs/login-sessions/pc/qrcode", { method: "POST" });
 }
 
 export function checkQrLogin(sessionId: number): Promise<XhsQrLoginSession> {
-  return requestJson<XhsQrLoginSession>(`/api/accounts/xhs/qr-login/check?session_id=${sessionId}`, { method: "POST" });
+  return requestJson<XhsQrLoginSession>(`/api/xhs/login-sessions/${sessionId}`);
 }
 
 export function importCookieAccount(payload: { cookie_text: string; sub_type?: "pc" | "creator" }): Promise<PlatformAccount> {
-  return requestJson<PlatformAccount>("/api/accounts/xhs/cookie-import", {
+  return requestJson<PlatformAccount>("/api/accounts/import-cookie", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ platform: "xhs", cookie_string: payload.cookie_text, sub_type: payload.sub_type || "pc" }),
   });
 }
 
@@ -683,7 +683,7 @@ export function deleteAccount(accountId: number): Promise<void> {
 }
 
 export function refreshAccountStatus(accountId: number): Promise<PlatformAccount> {
-  return requestJson<PlatformAccount>(`/api/accounts/${accountId}/refresh`, { method: "POST" });
+  return requestJson<PlatformAccount>(`/api/accounts/${accountId}/check`, { method: "POST" });
 }
 
 export function checkAccount(accountId: number): Promise<PlatformAccount> {

@@ -48,8 +48,14 @@
 | 29 | tasks | `task.py` | 统一任务 | 通用 |
 | 30 | notifications | `notification.py` | 站内通知 | 通用 |
 | 31 | api_logs | `api_log.py` | API 调用日志 | 通用 |
+| 32 | compliance_rules | `compliance.py` | 合规规则 | 智能工作流 |
+| 33 | knowledge_entries | `knowledge.py` | 知识库条目 | 智能工作流 |
+| 34 | workflow_runs | `workflow.py` | 工作流运行记录 | 智能工作流 |
+| 35 | workflow_logs | `workflow.py` | 工作流节点日志 | 智能工作流 |
+| 36 | approval_queue | `approval.py` | 审批队列 | 智能工作流 |
+| 37 | agent_conversations | `agent.py` | 智能体对话记录 | 智能体 |
 
-Alembic 迁移版本（17 个）：`ae22605e776e` → `xhs_svc_001_add_xhs_service_layer_fields`
+Alembic 迁移版本（18 个）：`ae22605e776e` → `q2r3s4t5u6v7_add_agent_conversations_table`
 
 ---
 
@@ -889,3 +895,124 @@ Alembic 迁移版本（17 个）：`ae22605e776e` → `xhs_svc_001_add_xhs_servi
 - 模型配置列表
 - 创建/更新/删除模型配置
 - 设置默认模型
+
+---
+
+### 32. compliance_rules
+
+字段：
+
+- id：主键
+- user_id：关联用户 ID（外键 → users.id，索引）
+- category：规则类别（`platform_rule` / `industry_regulation` / `internal_policy`，索引）
+- rule_text：规则文本
+- rule_description：规则描述（可为空）
+- severity：严重程度（`low` / `medium` / `high` / `critical`，默认 `medium`）
+- is_active：是否启用（bool，默认 True）
+- created_at：创建时间
+- updated_at：更新时间
+
+说明：合规审核规则，用于工作流中的合规检查节点。`category` 区分平台规则、行业规范和内部策略三类。默认 9 条规则可通过 `/api/compliance-rules/seed-defaults` 初始化。
+
+---
+
+### 33. knowledge_entries
+
+字段：
+
+- id：主键
+- user_id：关联用户 ID（外键 → users.id，索引）
+- source_type：素材类型（`material` / `platform_rule` / `quality_script`，索引）
+- source_id：来源 ID（可为空，关联笔记/帖子等原始数据 ID）
+- content：知识内容文本
+- embedding_id：向量嵌入 ID（可为空，索引，用于关联 ChromaDB 中的向量）
+- entry_metadata：元数据 JSON（可为空，存储平台、作者等附加信息）
+- created_at：创建时间
+- updated_at：更新时间
+
+说明：RAG 知识库条目，`source_type` 区分产品素材、平台规则和优质话术。向量数据存储在 ChromaDB（`./storage/chroma`），`embedding_id` 用于关联。每用户独立 Collection（`user_{id}_knowledge`）。
+
+---
+
+### 34. workflow_runs
+
+字段：
+
+- id：主键
+- user_id：关联用户 ID（外键 → users.id，可为空，索引）
+- workflow_type：工作流类型（`lead_scoring` / `script_generation` / `content_publish` / `agent_react`，索引）
+- workflow_id：工作流运行唯一 ID（String(128)，唯一索引）
+- state：运行状态（`pending` / `running` / `paused` / `completed` / `failed` / `cancelled`，默认 `pending`，索引）
+- input_data：输入数据 JSON（可为空）
+- output_data：输出数据 JSON（可为空）
+- current_node：当前执行节点（可为空）
+- paused_at_node：暂停所在节点（可为空）
+- error_node：出错节点（可为空）
+- error_message：错误信息（Text，默认空）
+- retry_count：重试次数（默认 0）
+- parent_workflow_id：父工作流 ID（可为空，支持嵌套工作流）
+- created_at：创建时间
+- updated_at：更新时间
+- completed_at：完成时间（可为空）
+
+说明：工作流运行记录，支持 LangGraph 和自研 WorkflowEngine 两种引擎。`paused` 状态表示工作流因合规风险门控暂停，等待人工审批后通过 `/api/workflows/runs/{workflow_id}/resume` 恢复。
+
+---
+
+### 35. workflow_logs
+
+字段：
+
+- id：主键
+- workflow_id：关联工作流运行 ID（String(128)，索引）
+- node_name：节点名称（如 `rule_prescreen`、`ai_lead_identify`、`compliance_check` 等）
+- event_type：事件类型（`completed` / `failed` / `skipped`）
+- input_snapshot：输入快照 JSON（可为空）
+- output_snapshot：输出快照 JSON（可为空）
+- error_message：错误信息（可为空）
+- duration_ms：执行耗时毫秒（可为空）
+- llm_tokens_used：LLM Token 消耗（可为空）
+- llm_cost_estimate：LLM 费用估算（Numeric(10,6)，可为空）
+- created_at：创建时间
+
+说明：工作流节点执行日志，记录每个节点的输入输出和性能指标。`duration_ms` 和 `llm_tokens_used` 用于成本监控和性能优化。
+
+---
+
+### 36. approval_queue
+
+字段：
+
+- id：主键
+- user_id：关联用户 ID（外键 → users.id，索引）
+- workflow_id：关联工作流运行 ID（String(128)，可为空，索引）
+- workflow_type：工作流类型（可为空）
+- content_type：内容类型（`follow_up_script` / `draft`）
+- content_id：关联内容 ID（可为空，如线索 ID 或草稿 ID）
+- content_snapshot：内容快照 JSON（默认空对象）
+- risk_level：风险等级（`low` / `medium` / `high` / `critical`，默认 `medium`，索引）
+- compliance_result：合规检查结果 JSON（可为空）
+- status：审批状态（`pending` / `approved` / `rejected`，默认 `pending`，索引）
+- reviewer_id：审核人 ID（外键 → users.id，可为空）
+- review_comment：审核意见（Text，可为空）
+- reviewed_at：审核时间（可为空）
+- created_at：创建时间
+
+说明：审批队列，由工作流风险门控节点自动创建。当合规检查发现风险时，工作流暂停并创建审批记录，等待人工审核。审核通过后工作流继续执行。
+
+---
+
+### 37. agent_conversations
+
+字段：
+
+- id：主键
+- user_id：关联用户 ID（外键 → users.id，索引）
+- thread_id：对话线程 ID（String(128)，索引）
+- role：消息角色（`user` / `assistant` / `tool`）
+- content：消息内容（Text，默认空）
+- tool_calls：工具调用信息 JSON（可为空，assistant 消息的工具调用记录）
+- metadata_：元数据 JSON（可为空，存储迭代次数、工具名称等附加信息）
+- created_at：创建时间
+
+说明：ReAct 智能体对话记录，按 `thread_id` 分组管理多轮对话。`tool_calls` 记录 assistant 调用的工具列表，`metadata_` 存储工具执行结果等附加信息。对话上下文通过 `ConversationBufferMemory` 管理，支持从数据库加载历史消息。

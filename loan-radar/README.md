@@ -7,6 +7,7 @@
 ```
 配置账号/关键词/同行账号 → 采集内容 → 帖子池/评论池 → 识别贷款需求线索 → 线索池分级 → CRM 跟进 → 每日获客报告
 同时：帖子池 → 收藏到内容库 → AI 改写生成小红书草稿 → 发布中心 → 数据洞察
+增强：知识库索引 → RAG 检索 → AI 话术生成 → 合规审核 → 风险门控 → 人工审批 → 智能体多轮对话
 ```
 
 ## 一键启动
@@ -155,11 +156,14 @@ loan-radar/
   backend/
     app/
       adapters/      # 平台适配器
-      api/routes/    # API 路由（29 个模块）
+      agent/         # ReAct 智能体（LangGraph + 工具调用 + 多轮对话）
+      api/routes/    # API 路由（34 个模块）
       collectors/    # 采集器（media_crawler / xhs_sdk）
-      services/      # 业务逻辑（25+ 个服务）
-      models/        # 数据模型
+      models/        # 数据模型（37 个表）
+      rag/           # RAG 知识库（LlamaIndex + ChromaDB + 语义检索）
       schemas/       # Pydantic Schemas
+      services/      # 业务逻辑（25+ 个服务）
+      workflow/      # 工作流引擎（LangGraph + 节点编排 + 合规审核）
       core/          # 核心模块
     alembic/         # 数据库迁移
     scripts/         # 工具脚本

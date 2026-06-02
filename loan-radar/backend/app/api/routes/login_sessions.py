@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -23,6 +24,7 @@ from app.services.account_service import (
 )
 
 router = APIRouter(prefix="/api/xhs/login-sessions", tags=["xhs-login-sessions"])
+logger = logging.getLogger(__name__)
 
 
 class PcQrCodeRequest(BaseModel):
@@ -148,6 +150,17 @@ def pc_qrcode(
     try:
         qr_payload = adapter.create_qrcode()
     except Exception as exc:
+        import os as _os
+        _execjs_rt = _os.environ.get("EXECJS_RUNTIME", "(not set)")
+        _node_check = "(unknown)"
+        try:
+            import subprocess as _sp
+            _r = _sp.run(["node", "--version"], capture_output=True, text=True, timeout=5,
+                         creationflags=_sp.CREATE_NO_WINDOW if _os.name == "nt" else 0)
+            _node_check = _r.stdout.strip() if _r.returncode == 0 else f"exit={_r.returncode}"
+        except Exception as _e:
+            _node_check = f"error: {_e}"
+        logger.exception("XHS PC QR code generation failed (EXECJS_RUNTIME=%s, node=%s)", _execjs_rt, _node_check)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"XHS PC QR code generation failed: {exc}",
@@ -184,6 +197,7 @@ def creator_qrcode(
     try:
         qr_payload = adapter.create_qrcode()
     except Exception as exc:
+        logger.exception("XHS Creator QR code generation failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"XHS Creator QR code generation failed: {exc}",
